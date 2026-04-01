@@ -1,0 +1,24 @@
+[
+  {
+    "id": "seed-sean",
+    "name": "Sean",
+    "surname": "Gillespie",
+    "email": "sean@outerjoin.co.za",
+    "password": "$2b$10$jOkK4wLuTtHBPjE1EAuKquOnbg.MwkKwIo8tc6U9v7vIUmLUDceCO",
+    "isAdmin": true,
+    "forcePasswordChange": true,
+    "firstLoginAt": null,
+    "createdAt": "2026-04-01T00:00:00.000Z"
+  },
+  {
+    "id": "seed-carl",
+    "name": "Carl",
+    "surname": "Dos Santos",
+    "email": "carl@outerjoin.co.za",
+    "password": "$2b$10$jOkK4wLuTtHBPjE1EAuKquOnbg.MwkKwIo8tc6U9v7vIUmLUDceCO",
+    "isAdmin": true,
+    "forcePasswordChange": true,
+    "firstLoginAt": null,
+    "createdAt": "2026-04-01T00:00:00.000Z"
+  }
+]

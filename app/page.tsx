@@ -1,64 +1,101 @@
-import Image from "next/image";
+'use client';
 
-export default function Home() {
+import { useAuth } from '@/lib/useAuth';
+import Header from '@/components/Header';
+import Link from 'next/link';
+import { useEffect, useState } from 'react';
+
+interface ActivityEntry {
+  id: string;
+  timestamp: string;
+  type: string;
+  userName: string;
+  detail?: string;
+}
+
+export default function DashboardPage() {
+  const { session, loading, logout } = useAuth();
+  const [scheduleCount, setScheduleCount] = useState(0);
+  const [recentActivity, setRecentActivity] = useState<ActivityEntry[]>([]);
+
+  useEffect(() => {
+    if (!session) return;
+    fetch('/api/schedule').then(r => r.json()).then((data: unknown[]) => setScheduleCount(data.length));
+    fetch('/api/activity').then(r => r.json()).then((data: ActivityEntry[]) => setRecentActivity(data.slice(0, 5)));
+  }, [session]);
+
+  if (loading || !session) return null;
+
   return (
-    <div className="flex flex-col flex-1 items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex flex-1 w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+    <div className="min-h-screen bg-gray-50">
+      <Header session={session} onLogout={logout} />
+
+      <main className="max-w-screen-lg mx-auto px-4 py-8 flex flex-col gap-8">
+        {/* Welcome */}
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-5">
+          <h1 className="text-xl font-bold text-gray-900">Welcome, {session.name}</h1>
+          <p className="text-sm text-gray-500 mt-1">iRam Call Cycle Builder — Convert raw call cycle files to Perigee Call Schedule format</p>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+
+        {/* Summary Cards */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Schedule Rows</p>
+            <p className="text-3xl font-bold text-[#7CC042] mt-1">{scheduleCount}</p>
+          </div>
+          <Link href="/upload" className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:border-[#7CC042] transition-colors group">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Quick Action</p>
+            <p className="text-lg font-bold text-gray-900 mt-1 group-hover:text-[#7CC042] transition-colors">Upload File</p>
+            <p className="text-xs text-gray-400 mt-0.5">Upload a call cycle file</p>
+          </Link>
+          <Link href="/schedule" className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:border-[#7CC042] transition-colors group">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Quick Action</p>
+            <p className="text-lg font-bold text-gray-900 mt-1 group-hover:text-[#7CC042] transition-colors">View Schedule</p>
+            <p className="text-xs text-gray-400 mt-0.5">View &amp; download the schedule</p>
+          </Link>
         </div>
+
+        {/* Admin Quick Links */}
+        {session.isAdmin && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Link href="/admin/users" className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:border-[#7CC042] transition-colors group">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Admin</p>
+              <p className="text-lg font-bold text-gray-900 mt-1 group-hover:text-[#7CC042] transition-colors">Manage Users</p>
+            </Link>
+            <Link href="/activity" className="bg-white rounded-xl shadow-sm border border-gray-100 p-5 hover:border-[#7CC042] transition-colors group">
+              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Admin</p>
+              <p className="text-lg font-bold text-gray-900 mt-1 group-hover:text-[#7CC042] transition-colors">Activity Log</p>
+            </Link>
+          </div>
+        )}
+
+        {/* Recent Activity */}
+        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-4">Recent Activity</h2>
+          {recentActivity.length === 0 ? (
+            <p className="text-sm text-gray-400">No recent activity</p>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {recentActivity.map(a => {
+                const ts = new Date(a.timestamp);
+                return (
+                  <div key={a.id} className="flex items-start gap-3 text-sm">
+                    <div className="w-2 h-2 rounded-full bg-[#7CC042] mt-1.5 shrink-0" />
+                    <div>
+                      <p className="text-gray-700">
+                        <span className="font-medium">{a.userName}</span>
+                        {' '}{a.detail || a.type}
+                      </p>
+                      <p className="text-xs text-gray-400">
+                        {ts.toLocaleDateString('en-GB')} {ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })}
+                      </p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </section>
       </main>
     </div>
   );
