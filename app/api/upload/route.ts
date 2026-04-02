@@ -25,6 +25,14 @@ export async function POST(req: NextRequest) {
     // Parse the file
     const { format, entries, warnings } = parseCallCycleFile(buffer, references);
 
+    // Warn if reference data is empty and format requires it
+    const needsRefData = ['josh-standard', 'josh-alt', 'email-sheet', 'simple-name'].includes(format);
+    if (needsRefData && references.users.length === 0) {
+      warnings.unshift(
+        '⚠ No reference data loaded. Sheets named by person (not email address) cannot be matched to Perigee user emails. Please upload reference data first via the "Upload Reference Data" section.'
+      );
+    }
+
     if (entries.length === 0) {
       return NextResponse.json({
         error: 'No data could be extracted from the file',

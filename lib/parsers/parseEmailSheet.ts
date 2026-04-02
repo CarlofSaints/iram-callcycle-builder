@@ -46,7 +46,7 @@ export function parseEmailSheet(workbook: XLSX.WorkBook, references: ReferenceDa
       firstName = ref?.firstName || personName.split(/\s+/)[0] || personName;
       surname = ref?.surname || personName.split(/\s+/).slice(1).join(' ') || '';
       if (!userEmail) {
-        warnings.push(`Could not find email for "${personName}" (sheet: ${sheetName})`);
+        warnings.push(`Sheet "${sheetName}" is not labelled with an email address — could not match "${personName}" to any user in reference data. This sheet's entries will be saved with a placeholder email. Upload reference data or rename the sheet to the user's Perigee email address.`);
       }
     }
 

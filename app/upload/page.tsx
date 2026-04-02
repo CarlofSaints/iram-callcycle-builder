@@ -82,6 +82,11 @@ export default function UploadPage() {
         <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-5">
           <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Call Cycle File</h2>
 
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+            <p className="font-semibold">Important:</p>
+            <p className="mt-1">Sheets that are <strong>not</strong> labelled with an email address (e.g. &quot;ntethelelo@iram.co.za&quot;) will only be processed if reference data has been uploaded and the person&apos;s name can be matched. If the sheet name is a person&apos;s name, make sure reference data is uploaded first, or rename the sheet to the user&apos;s Perigee email address.</p>
+          </div>
+
           <div
             className={`border-2 border-dashed rounded-xl p-8 text-center transition-colors cursor-pointer
               ${dragOver ? 'border-[#7CC042] bg-green-50' : 'border-gray-300 hover:border-[#7CC042]'}`}

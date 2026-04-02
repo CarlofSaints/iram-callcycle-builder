@@ -48,7 +48,7 @@ export function parseSimpleName(workbook: XLSX.WorkBook, references: ReferenceDa
     const surname = ref?.surname || personName.split(/\s+/).slice(1).join(' ') || '';
 
     if (!userEmail) {
-      warnings.push(`Could not find email for "${personName}" (sheet: ${sheetName})`);
+      warnings.push(`Sheet "${sheetName}" is not labelled with an email address — could not match "${personName}" to any user in reference data. This sheet's entries will be saved with a placeholder email. Upload reference data or rename the sheet to the user's Perigee email address.`);
     }
 
     // These files typically have NO week indicators,
