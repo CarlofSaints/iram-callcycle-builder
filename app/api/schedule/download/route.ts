@@ -38,6 +38,27 @@ export async function GET(req: Request) {
     teamLookup.set(t.teamName, t);
   }
 
+  // Pre-compute cycle per user:
+  // Cycle 1 = same schedule every week (only one block in raw file)
+  // Cycle 2 = two patterns: Week 1&3 differs from Week 2&4
+  // Cycle 4 = four different week patterns (future)
+  const userCycleMap = new Map<string, number>();
+  const userCyclePatterns = new Map<string, Set<string>>();
+  for (const row of schedule) {
+    const key = row.userEmail.toLowerCase();
+    if (!userCyclePatterns.has(key)) userCyclePatterns.set(key, new Set());
+    userCyclePatterns.get(key)!.add(row.cycle);
+  }
+  for (const [email, patterns] of userCyclePatterns) {
+    const has13 = patterns.has('Week 1&3');
+    const has24 = patterns.has('Week 2&4');
+    if (has13 && has24) {
+      userCycleMap.set(email, 2);  // Two different patterns
+    } else {
+      userCycleMap.set(email, 1);  // Same schedule every week
+    }
+  }
+
   const workbook = new ExcelJS.Workbook();
 
   // Header styling
@@ -84,24 +105,34 @@ export async function GET(req: Request) {
   for (const row of schedule) {
     const refUser = userLookup.get(row.userEmail.toLowerCase());
     const daysShort = daysToShort(row.days);
+    const userCycle = userCycleMap.get(row.userEmail.toLowerCase()) || 1;
 
     // Convert cycle + days to WEEK1-WEEK4 columns
     let week1 = '', week2 = '', week3 = '', week4 = '';
-    const cycleNum = row.cycle.includes('1') && row.cycle.includes('3') ? '13'
-      : row.cycle.includes('2') && row.cycle.includes('4') ? '24'
-      : 'all';
 
-    if (cycleNum === '13') {
+    if (userCycle === 1) {
+      // Cycle 1: Same schedule every week — all weeks get the same days
       week1 = daysShort;
-      week3 = daysShort;
-    } else if (cycleNum === '24') {
       week2 = daysShort;
+      week3 = daysShort;
       week4 = daysShort;
     } else {
-      week1 = daysShort;
-      week2 = daysShort;
-      week3 = daysShort;
-      week4 = daysShort;
+      // Cycle 2: Week 1&3 differ from Week 2&4
+      const is13 = row.cycle.includes('1') && row.cycle.includes('3');
+      const is24 = row.cycle.includes('2') && row.cycle.includes('4');
+      if (is13) {
+        week1 = daysShort;
+        week3 = daysShort;
+      } else if (is24) {
+        week2 = daysShort;
+        week4 = daysShort;
+      } else {
+        // Fallback: populate all weeks
+        week1 = daysShort;
+        week2 = daysShort;
+        week3 = daysShort;
+        week4 = daysShort;
+      }
     }
 
     const r = scheduleSheet.addRow({
@@ -120,7 +151,7 @@ export async function GET(req: Request) {
       storeId: row.storeId,
       storeName: row.storeName,
       channel: row.channel,
-      cycle: '4',
+      cycle: String(userCycle),
       week1,
       week2,
       week3,
@@ -167,6 +198,7 @@ export async function GET(req: Request) {
     seenEmails.add(key);
 
     const refUser = userLookup.get(key);
+    const userCycle = userCycleMap.get(key) || 1;
     teamsUserSheet.addRow({
       userId: refUser?.userId || '',
       userEmail: row.userEmail,
@@ -184,7 +216,7 @@ export async function GET(req: Request) {
       regionalManager: '',
       action: row.action,
       cycleStatus: 'ACTIVE',
-      cycle: '4',
+      cycle: String(userCycle),
       cycleStartDate: '',
       cycleEndDate: '',
     });

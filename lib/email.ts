@@ -83,9 +83,14 @@ export async function sendUploadNotification(
     userEmail: string;
     filename: string;
     timestamp: string;
+    format: string;
+    entriesFound: number;
     rowsAdded: number;
     rowsUpdated: number;
     totalRows: number;
+    warnings: string[];
+    status: 'success' | 'partial' | 'failed';
+    errorMessage?: string;
   },
 ) {
   if (!toEmails.length) return;
@@ -94,24 +99,51 @@ export async function sendUploadNotification(
   const dateStr = ts.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const timeStr = ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
+  const statusColor = entry.status === 'success' ? '#7CC042' : entry.status === 'partial' ? '#F59E0B' : '#EF4444';
+  const statusLabel = entry.status === 'success' ? 'Successful' : entry.status === 'partial' ? 'Partially Loaded' : 'Failed';
+  const statusIcon = entry.status === 'success' ? '&#10003;' : entry.status === 'partial' ? '&#9888;' : '&#10007;';
+
+  const warningsHtml = entry.warnings.length > 0
+    ? `<div style="margin:16px 0;padding:12px 16px;background:#FFFBEB;border-left:4px solid #F59E0B;border-radius:4px;">
+        <p style="margin:0 0 8px;font-weight:bold;color:#92400E;font-size:13px;">Warnings (${entry.warnings.length}):</p>
+        <ul style="margin:0;padding:0 0 0 18px;color:#78350F;font-size:12px;">
+          ${entry.warnings.map(w => `<li style="margin:0 0 4px;">${w}</li>`).join('')}
+        </ul>
+      </div>`
+    : '';
+
+  const errorHtml = entry.errorMessage
+    ? `<div style="margin:16px 0;padding:12px 16px;background:#FEF2F2;border-left:4px solid #EF4444;border-radius:4px;">
+        <p style="margin:0;font-weight:bold;color:#991B1B;font-size:13px;">Error:</p>
+        <p style="margin:4px 0 0;color:#7F1D1D;font-size:12px;">${entry.errorMessage}</p>
+      </div>`
+    : '';
+
   const body = `
-    <p style="margin:0 0 16px;color:#333;">A call cycle file was uploaded on <strong>iRam Call Cycle Builder</strong>.</p>
-    <table style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:14px 16px;width:100%;margin-bottom:20px;border-collapse:collapse;">
+    <div style="margin:0 0 16px;padding:12px 20px;background:${statusColor};border-radius:6px;text-align:center;">
+      <span style="color:#fff;font-size:20px;font-weight:bold;">${statusIcon} Upload ${statusLabel}</span>
+    </div>
+    <table style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:14px 16px;width:100%;margin-bottom:16px;border-collapse:collapse;">
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Uploaded by</td><td style="font-size:13px;">${entry.userName} &lt;${entry.userEmail}&gt;</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Date</td><td style="font-size:13px;">${dateStr}</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Time</td><td style="font-size:13px;">${timeStr}</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">File</td><td style="font-size:13px;font-family:monospace;word-break:break-all;">${entry.filename}</td></tr>
-      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Added</td><td style="font-size:13px;">${entry.rowsAdded}</td></tr>
-      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Updated</td><td style="font-size:13px;">${entry.rowsUpdated}</td></tr>
-      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Total Schedule Rows</td><td style="font-size:13px;">${entry.totalRows}</td></tr>
+      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Format Detected</td><td style="font-size:13px;">${entry.format}</td></tr>
+      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Entries Found</td><td style="font-size:13px;">${entry.entriesFound}</td></tr>
+      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Added</td><td style="font-size:13px;color:${entry.rowsAdded > 0 ? '#7CC042' : '#666'};font-weight:${entry.rowsAdded > 0 ? 'bold' : 'normal'};">${entry.rowsAdded}</td></tr>
+      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Updated</td><td style="font-size:13px;color:${entry.rowsUpdated > 0 ? '#F59E0B' : '#666'};font-weight:${entry.rowsUpdated > 0 ? 'bold' : 'normal'};">${entry.rowsUpdated}</td></tr>
+      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Total Schedule Rows</td><td style="font-size:13px;font-weight:bold;">${entry.totalRows}</td></tr>
     </table>
+    ${warningsHtml}
+    ${errorHtml}
     <p style="margin:0;color:#999;font-size:12px;">This is an automated notification from iRam Call Cycle Builder.</p>
   `;
 
+  const subjectStatus = entry.status === 'success' ? '' : entry.status === 'partial' ? ' [WARNINGS]' : ' [FAILED]';
   return getResend().emails.send({
     from: FROM,
     to: toEmails,
-    subject: `iRam CC: Upload by ${entry.userName} — ${entry.filename}`,
+    subject: `iRam CC: Upload by ${entry.userName} — ${entry.filename}${subjectStatus}`,
     html: emailShell(body),
   });
 }

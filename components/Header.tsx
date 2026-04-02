@@ -2,6 +2,7 @@
 
 import { Session } from '@/lib/useAuth';
 import Link from 'next/link';
+import Image from 'next/image';
 
 interface HeaderProps {
   session: Session;
@@ -12,15 +13,26 @@ export default function Header({ session, onLogout }: HeaderProps) {
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
       <div className="max-w-screen-xl mx-auto px-4 h-[72px] flex items-center justify-between gap-4">
-        {/* Left: Title */}
+        {/* Left: Logos + Title */}
         <Link href="/" className="flex items-center gap-3 min-w-0 overflow-hidden hover:opacity-80 transition-opacity">
-          <div className="w-10 h-10 rounded-lg bg-[#7CC042] flex items-center justify-center shrink-0">
-            <span className="text-white font-bold text-lg">iR</span>
-          </div>
+          <Image
+            src="/iram-logo.png"
+            alt="iRam"
+            width={40}
+            height={40}
+            className="shrink-0 object-contain"
+          />
           <div className="hidden sm:block">
             <p className="font-bold text-gray-900 text-sm leading-tight">iRam Call Cycle Builder</p>
             <p className="text-xs text-gray-400 leading-tight">Perigee Schedule Converter</p>
           </div>
+          <Image
+            src="/perigee-logo.jpg"
+            alt="Perigee"
+            width={32}
+            height={32}
+            className="shrink-0 object-contain hidden sm:block"
+          />
         </Link>
 
         {/* Center: Nav links */}

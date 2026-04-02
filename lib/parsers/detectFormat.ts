@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 
-export type FileFormat = 'josh-standard' | 'ash-region' | 'josh-alt' | 'email-sheet' | 'simple-name' | 'unknown';
+export type FileFormat = 'marker' | 'josh-standard' | 'ash-region' | 'josh-alt' | 'email-sheet' | 'simple-name' | 'unknown';
 
 const DAYS_SHORT = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 
@@ -15,6 +15,30 @@ function rowHasDays(row: string[], minMatch = 3): boolean {
 
 export function detectFormat(workbook: XLSX.WorkBook): FileFormat {
   const sheetNames = workbook.SheetNames.map(s => s.trim());
+
+  // MARKER format (highest priority): any sheet with "Week:" or "Email:" markers in first ~30 rows
+  // Markers may be in a single cell ("Week: 1,3") or split across cells (A="WEEK:", C="1,3")
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
+    const scanRows = Math.min(30, data.length);
+    for (let r = 0; r < scanRows; r++) {
+      const row = data[r] || [];
+      // Check individual cells first
+      for (const cell of row) {
+        const s = String(cell || '');
+        if (/week\s*:\s*\d/i.test(s) || /email\s*:\s*\S+@/i.test(s)) {
+          return 'marker';
+        }
+      }
+      // Check joined row for split markers (label in col A, value in col B/C)
+      const joined = row.map(c => String(c || '').trim()).join(' ');
+      if (/week\s*:\s*\d/i.test(joined) || /email\s*:\s*\S+@/i.test(joined)) {
+        return 'marker';
+      }
+    }
+  }
 
   // Josh ALT: sheets named "Week 1&3" and "Week 2&4"
   const lowerNames = sheetNames.map(s => s.toLowerCase());

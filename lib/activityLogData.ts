@@ -4,7 +4,7 @@ import path from 'path';
 export interface ActivityEntry {
   id: string;
   timestamp: string;
-  type: 'login' | 'upload' | 'download' | 'user_created' | 'user_updated' | 'user_deleted' | 'password_changed';
+  type: 'login' | 'upload' | 'download' | 'user_created' | 'user_updated' | 'user_deleted' | 'password_changed' | 'schedule_edit' | 'schedule_delete';
   userName: string;
   userEmail: string;
   detail?: string;

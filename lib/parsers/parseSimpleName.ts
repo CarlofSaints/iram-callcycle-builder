@@ -48,7 +48,8 @@ export function parseSimpleName(workbook: XLSX.WorkBook, references: ReferenceDa
     const surname = ref?.surname || personName.split(/\s+/).slice(1).join(' ') || '';
 
     if (!userEmail) {
-      warnings.push(`Sheet "${sheetName}" is not labelled with an email address — could not match "${personName}" to any user in reference data. This sheet's entries will be saved with a placeholder email. Upload reference data or rename the sheet to the user's Perigee email address.`);
+      warnings.push(`Sheet "${sheetName}" will not be loaded — no email address found. Label the sheet with the user's Perigee email address or add an "Email:" marker above each cycle table.`);
+      continue;
     }
 
     // These files typically have NO week indicators,
@@ -127,11 +128,9 @@ export function parseSimpleName(workbook: XLSX.WorkBook, references: ReferenceDa
         const { storeName, storeCode } = extractStoreCode(cellValue);
         if (!storeName) continue;
 
-        const emailToUse = userEmail || `unknown_${personName.replace(/\s+/g, '_')}`;
-
         // Add for current cycle
         addOrMergeEntry(entries, {
-          userEmail: emailToUse,
+          userEmail: userEmail,
           firstName,
           surname,
           storeId: storeCode,
@@ -143,7 +142,7 @@ export function parseSimpleName(workbook: XLSX.WorkBook, references: ReferenceDa
         // If every-week schedule, also add for Week 2&4
         if (everyWeek && currentCycle === 'Week 1&3') {
           addOrMergeEntry(entries, {
-            userEmail: emailToUse,
+            userEmail: userEmail,
             firstName,
             surname,
             storeId: storeCode,

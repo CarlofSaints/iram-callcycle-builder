@@ -34,6 +34,20 @@ export async function POST(req: NextRequest) {
     }
 
     if (entries.length === 0) {
+      // Send failure email
+      const adminEmails = loadUsers().filter(u => u.isAdmin).map(u => u.email);
+      const notifyEmails = [...new Set([...adminEmails, userEmail, ...(ccEmail ? [ccEmail] : [])])].filter(Boolean);
+      try {
+        await sendUploadNotification(notifyEmails, {
+          userName, userEmail, filename: file.name, timestamp: new Date().toISOString(),
+          format, entriesFound: 0, rowsAdded: 0, rowsUpdated: 0, totalRows: 0,
+          warnings, status: 'failed',
+          errorMessage: 'No data could be extracted from the file.',
+        });
+      } catch (emailErr) {
+        console.error('[upload] Failure email failed:', emailErr);
+      }
+
       return NextResponse.json({
         error: 'No data could be extracted from the file',
         format,
@@ -58,6 +72,10 @@ export async function POST(req: NextRequest) {
       detail: `Uploaded "${file.name}" (${format}): ${result.rowsAdded} added, ${result.rowsUpdated} updated, ${result.totalRows} total`,
     });
 
+    // Determine upload status
+    const allWarnings = [...warnings, ...result.warnings];
+    const uploadStatus: 'success' | 'partial' = allWarnings.length > 0 ? 'partial' : 'success';
+
     // Send email notification
     const adminEmails = loadUsers().filter(u => u.isAdmin).map(u => u.email);
     const notifyEmails = [...new Set([...adminEmails, userEmail, ...(ccEmail ? [ccEmail] : [])])].filter(Boolean);
@@ -68,9 +86,13 @@ export async function POST(req: NextRequest) {
         userEmail,
         filename: file.name,
         timestamp: new Date().toISOString(),
+        format,
+        entriesFound: entries.length,
         rowsAdded: result.rowsAdded,
         rowsUpdated: result.rowsUpdated,
         totalRows: result.totalRows,
+        warnings: allWarnings,
+        status: uploadStatus,
       });
     } catch (err) {
       console.error('[upload] Email notification failed:', err);
@@ -81,7 +103,7 @@ export async function POST(req: NextRequest) {
       format,
       entriesFound: entries.length,
       ...result,
-      warnings: [...warnings, ...result.warnings],
+      warnings: allWarnings,
     });
   } catch (err) {
     console.error('[upload] Error:', err);

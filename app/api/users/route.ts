@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { randomUUID } from 'crypto';
 import { loadUsers, saveUsers, User } from '@/lib/userData';
 import { addActivity } from '@/lib/activityLogData';
+import { sendWelcomeEmail } from '@/lib/email';
 
 export async function GET() {
   const users = loadUsers().map(({ password: _p, ...u }) => u);
@@ -43,6 +44,13 @@ export async function POST(req: NextRequest) {
     userEmail: email,
     detail: `Admin created user ${name} ${surname}`,
   });
+
+  // Send welcome email with login credentials
+  try {
+    await sendWelcomeEmail(email, `${name} ${surname}`, password);
+  } catch (err) {
+    console.error('[users] Welcome email failed:', err);
+  }
 
   const { password: _p, ...safe } = user;
   return NextResponse.json(safe, { status: 201 });

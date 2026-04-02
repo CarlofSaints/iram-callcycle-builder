@@ -133,7 +133,23 @@ export async function mergeIntoSchedule(
   return { rowsAdded, rowsUpdated, totalRows: schedule.length, warnings: uniqueWarnings };
 }
 
-async function saveSchedule(schedule: ScheduleRow[]) {
+export async function updateScheduleRow(index: number, row: ScheduleRow): Promise<ScheduleRow[]> {
+  const schedule = loadSchedule();
+  if (index < 0 || index >= schedule.length) throw new Error('Invalid row index');
+  schedule[index] = row;
+  await saveSchedule(schedule);
+  return schedule;
+}
+
+export async function deleteScheduleRow(index: number): Promise<ScheduleRow[]> {
+  const schedule = loadSchedule();
+  if (index < 0 || index >= schedule.length) throw new Error('Invalid row index');
+  schedule.splice(index, 1);
+  await saveSchedule(schedule);
+  return schedule;
+}
+
+export async function saveSchedule(schedule: ScheduleRow[]) {
   _cache = schedule;
   const json = JSON.stringify(schedule, null, 2);
 

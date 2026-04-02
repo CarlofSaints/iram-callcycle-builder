@@ -6,6 +6,7 @@ import { parseAshFormat } from './parseAshFormat';
 import { parseJoshAlt } from './parseJoshAlt';
 import { parseEmailSheet } from './parseEmailSheet';
 import { parseSimpleName } from './parseSimpleName';
+import { parseMarkerFormat } from './parseMarkerFormat';
 
 export interface ParseResult {
   format: FileFormat;
@@ -21,6 +22,12 @@ export function parseCallCycleFile(buffer: Buffer, references: ReferenceData): P
   let warnings: string[] = [];
 
   switch (format) {
+    case 'marker': {
+      const result = parseMarkerFormat(workbook, references);
+      entries = result.entries;
+      warnings = result.warnings;
+      break;
+    }
     case 'josh-standard': {
       const result = parseJoshStandard(workbook, references);
       entries = result.entries;

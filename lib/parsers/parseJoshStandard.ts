@@ -47,7 +47,8 @@ export function parseJoshStandard(workbook: XLSX.WorkBook, references: Reference
     const surname = ref?.surname || personName.split(/\s+/).slice(1).join(' ') || '';
 
     if (!userEmail) {
-      warnings.push(`Sheet "${sheetName}" is not labelled with an email address — could not match "${personName}" to any user in reference data. This sheet's entries will be saved with a placeholder email. Upload reference data or rename the sheet to the user's Perigee email address.`);
+      warnings.push(`Sheet "${sheetName}" will not be loaded — no email address found. Label the sheet with the user's Perigee email address or add an "Email:" marker above each cycle table.`);
+      continue;
     }
 
     // Scan through the sheet looking for cycle headers + day headers + stores
@@ -92,7 +93,7 @@ export function parseJoshStandard(workbook: XLSX.WorkBook, references: Reference
         if (!storeName) continue;
 
         addOrMergeEntry(entries, {
-          userEmail: userEmail || `unknown_${personName.replace(/\s+/g, '_')}`,
+          userEmail: userEmail,
           firstName,
           surname,
           storeId: storeCode,
