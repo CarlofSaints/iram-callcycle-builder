@@ -4,6 +4,8 @@ import { detectFormat, FileFormat } from './detectFormat';
 import { parseJoshStandard } from './parseJoshStandard';
 import { parseAshFormat } from './parseAshFormat';
 import { parseJoshAlt } from './parseJoshAlt';
+import { parseEmailSheet } from './parseEmailSheet';
+import { parseSimpleName } from './parseSimpleName';
 
 export interface ParseResult {
   format: FileFormat;
@@ -33,6 +35,18 @@ export function parseCallCycleFile(buffer: Buffer, references: ReferenceData): P
     }
     case 'josh-alt': {
       const result = parseJoshAlt(workbook, references);
+      entries = result.entries;
+      warnings = result.warnings;
+      break;
+    }
+    case 'email-sheet': {
+      const result = parseEmailSheet(workbook, references);
+      entries = result.entries;
+      warnings = result.warnings;
+      break;
+    }
+    case 'simple-name': {
+      const result = parseSimpleName(workbook, references);
       entries = result.entries;
       warnings = result.warnings;
       break;

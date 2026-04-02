@@ -1,19 +1,11 @@
 import * as XLSX from 'xlsx';
 import { ParsedEntry } from '../types';
+import { findDayHeaderRow, extractStoreCode, isStoreCell, addOrMergeEntry, detectCycleFromText } from './parserUtils';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
-function extractStoreCode(storeStr: string): { storeName: string; storeCode: string } {
-  const trimmed = storeStr.trim();
-  const dashIdx = trimmed.lastIndexOf(' - ');
-  if (dashIdx > 0) {
-    const storeName = trimmed.substring(0, dashIdx).trim();
-    const storeCode = trimmed.substring(dashIdx + 3).trim();
-    return { storeName, storeCode };
-  }
-  return { storeName: trimmed, storeCode: '' };
-}
-
+/**
+ * Ash format: Row 1 = name + email, Row 2 = day headers, stores below.
+ * May have week cycle sections mid-sheet.
+ */
 export function parseAshFormat(workbook: XLSX.WorkBook): { entries: ParsedEntry[]; warnings: string[] } {
   const entries: ParsedEntry[] = [];
   const warnings: string[] = [];
@@ -25,10 +17,8 @@ export function parseAshFormat(workbook: XLSX.WorkBook): { entries: ParsedEntry[
     const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
     if (data.length < 3) continue;
 
-    // Row 1 (index 0): name + email
+    // Row 1: find email and name
     const row1 = (data[0] || []).map(c => String(c || '').trim());
-
-    // Find email in row 1
     let userEmail = '';
     let firstName = '';
     let surname = '';
@@ -39,13 +29,14 @@ export function parseAshFormat(workbook: XLSX.WorkBook): { entries: ParsedEntry[
       }
     }
 
-    // The first non-empty cell in row 1 that's not the email is likely the name
     for (const cell of row1) {
       if (cell && !cell.includes('@')) {
-        const parts = cell.split(/\s+/);
-        firstName = parts[0] || '';
-        surname = parts.slice(1).join(' ') || '';
-        break;
+        const parts = cell.split(/\s+/).filter(p => p && !p.toLowerCase().includes('week'));
+        if (parts.length >= 1) {
+          firstName = parts[0];
+          surname = parts.slice(1).join(' ');
+          break;
+        }
       }
     }
 
@@ -54,74 +45,62 @@ export function parseAshFormat(workbook: XLSX.WorkBook): { entries: ParsedEntry[
       continue;
     }
 
-    // Row 2 (index 1): day headers
-    const dayRow = (data[1] || []).map(c => String(c || '').toLowerCase().trim());
-    const dayColumns: { col: number; day: string }[] = [];
-    for (let col = 0; col < dayRow.length; col++) {
-      const cell = dayRow[col];
-      for (const d of DAYS) {
-        if (cell.startsWith(d.substring(0, 3))) {
-          dayColumns.push({ col, day: d.charAt(0).toUpperCase() + d.slice(1) });
-          break;
-        }
-      }
-    }
-
-    if (dayColumns.length === 0) {
+    // Find day columns (usually row 2)
+    const dayResult = findDayHeaderRow(data, 5);
+    if (!dayResult) {
       warnings.push(`No day columns found in sheet "${sheetName}"`);
       continue;
     }
+    const { dayColumns, dayRowIdx } = dayResult;
 
-    // Determine cycle from row 1 or sheet name
+    // Determine initial cycle from row 1 or default
     let currentCycle = 'Week 1&3';
-    const row1Str = row1.join(' ').toLowerCase();
-    if (row1Str.includes('2') && row1Str.includes('4')) {
-      currentCycle = 'Week 2&4';
-    }
+    const row1Str = row1.join(' ');
+    const detectedCycle = detectCycleFromText(row1Str);
+    if (detectedCycle) currentCycle = detectedCycle;
 
-    // Rows 3+ (index 2+): store entries
-    for (let rowIdx = 2; rowIdx < data.length; rowIdx++) {
+    // Parse stores from rows below day headers
+    for (let rowIdx = dayRowIdx + 1; rowIdx < data.length; rowIdx++) {
       const row = data[rowIdx] || [];
+      const firstCell = String(row[0] || '').trim();
 
-      // Check if this is a new cycle section
-      const firstCell = String(row[0] || '').trim().toLowerCase();
-      if (firstCell.includes('week')) {
-        if (firstCell.includes('2') && firstCell.includes('4')) {
-          currentCycle = 'Week 2&4';
-        } else if (firstCell.includes('1') && firstCell.includes('3')) {
-          currentCycle = 'Week 1&3';
+      // Check for cycle switch
+      const cycleSwitchText = row.map(c => String(c || '').trim()).join(' ');
+      const newCycle = detectCycleFromText(cycleSwitchText);
+      if (newCycle) {
+        currentCycle = newCycle;
+        // Check if this row also has a new day header
+        const newDayResult = findDayHeaderRow([data[rowIdx + 1] || []], 1);
+        if (newDayResult) {
+          // Skip the week label + day header row
+          rowIdx++;
         }
         continue;
       }
 
+      // Check if this is another day header row (after a blank section)
+      const rowDays = findDayHeaderRow([row], 1);
+      if (rowDays && rowDays.dayColumns.length >= 3) {
+        continue; // Skip day header rows
+      }
+
+      // Parse store entries
       for (const { col, day } of dayColumns) {
         const cellValue = String(row[col] || '').trim();
-        if (!cellValue || cellValue.toLowerCase() === 'off' || cellValue === '-') continue;
+        if (!isStoreCell(cellValue)) continue;
 
         const { storeName, storeCode } = extractStoreCode(cellValue);
         if (!storeName) continue;
 
-        const existing = entries.find(e =>
-          e.userEmail === userEmail &&
-          e.storeId === storeCode &&
-          e.cycle === currentCycle
-        );
-
-        if (existing) {
-          if (!existing.days.includes(day)) {
-            existing.days.push(day);
-          }
-        } else {
-          entries.push({
-            userEmail,
-            firstName,
-            surname,
-            storeId: storeCode,
-            storeName,
-            cycle: currentCycle,
-            days: [day],
-          });
-        }
+        addOrMergeEntry(entries, {
+          userEmail,
+          firstName,
+          surname,
+          storeId: storeCode,
+          storeName,
+          cycle: currentCycle,
+          day,
+        });
       }
     }
   }

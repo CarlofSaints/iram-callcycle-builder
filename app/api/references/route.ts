@@ -66,7 +66,7 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    saveReferences(data);
+    await saveReferences(data);
 
     return NextResponse.json({
       ok: true,

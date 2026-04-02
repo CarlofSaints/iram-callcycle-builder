@@ -1,32 +1,24 @@
 import * as XLSX from 'xlsx';
-import { ParsedEntry } from '../types';
-import { ReferenceData } from '../types';
+import { ParsedEntry, ReferenceData } from '../types';
+import { findDayHeaderRow, extractStoreCode, isStoreCell, addOrMergeEntry, detectCycleFromText, findDayColumns } from './parserUtils';
 
-const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-
-function extractStoreCode(storeStr: string): { storeName: string; storeCode: string } {
-  const trimmed = storeStr.trim();
-  // Format: "Store Name - Store Code" or "Store Name - CODE"
-  const dashIdx = trimmed.lastIndexOf(' - ');
-  if (dashIdx > 0) {
-    const storeName = trimmed.substring(0, dashIdx).trim();
-    const storeCode = trimmed.substring(dashIdx + 3).trim();
-    return { storeName, storeCode };
-  }
-  return { storeName: trimmed, storeCode: '' };
-}
-
+/**
+ * Josh Standard format: Each sheet = one person.
+ * Has "Name week 1&3" text in early rows, day headers below it.
+ * Stores follow. May have a second "week 2&4" section later.
+ * Sheet name is the person's name (looked up in reference data for email).
+ */
 export function parseJoshStandard(workbook: XLSX.WorkBook, references: ReferenceData): { entries: ParsedEntry[]; warnings: string[] } {
   const entries: ParsedEntry[] = [];
   const warnings: string[] = [];
 
-  // Build email lookup from reference data (name -> email)
+  // Build email lookup from reference data
   const emailLookup = new Map<string, { email: string; firstName: string; surname: string }>();
   for (const u of references.users) {
-    const fullName = `${u.firstName} ${u.surname}`.toLowerCase();
+    const fullName = `${u.firstName} ${u.surname}`.toLowerCase().trim();
     emailLookup.set(fullName, { email: u.userEmail, firstName: u.firstName, surname: u.surname });
-    // Also try first name only
-    emailLookup.set(u.firstName.toLowerCase(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
+    emailLookup.set(u.firstName.toLowerCase().trim(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
+    emailLookup.set(u.userEmail.toLowerCase().trim(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
   }
 
   for (const sheetName of workbook.SheetNames) {
@@ -34,91 +26,80 @@ export function parseJoshStandard(workbook: XLSX.WorkBook, references: Reference
     if (!sheet) continue;
 
     const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
-    if (data.length < 4) continue;
+    if (data.length < 3) continue;
 
-    // Sheet name is the person's name
+    // Skip blank/template sheets
+    const hasAnyContent = data.some(row =>
+      (row || []).some(c => {
+        const s = String(c || '').trim();
+        return s.length > 0;
+      })
+    );
+    if (!hasAnyContent) continue;
+
+    // Sheet name is the person's name - look up email
     const personName = sheetName.trim();
+    if (personName.toLowerCase() === 'blank') continue;
+
     const ref = emailLookup.get(personName.toLowerCase());
     const userEmail = ref?.email || '';
-    const firstName = ref?.firstName || personName;
-    const surname = ref?.surname || '';
+    const firstName = ref?.firstName || personName.split(/\s+/)[0] || personName;
+    const surname = ref?.surname || personName.split(/\s+/).slice(1).join(' ') || '';
 
     if (!userEmail) {
       warnings.push(`Could not find email for "${personName}" (sheet: ${sheetName})`);
     }
 
-    // Find day column positions from row 3 (index 2)
-    const dayRow = (data[2] || []).map(c => String(c || '').toLowerCase().trim());
-    const dayColumns: { col: number; day: string }[] = [];
-    for (let col = 0; col < dayRow.length; col++) {
-      const cell = dayRow[col];
-      for (const d of DAYS) {
-        if (cell.startsWith(d.substring(0, 3))) {
-          dayColumns.push({ col, day: d.charAt(0).toUpperCase() + d.slice(1) });
-          break;
-        }
-      }
-    }
-
-    // Parse week sections
-    // Row 2 (index 1) contains cycle info like "Name week 1&3"
+    // Scan through the sheet looking for cycle headers + day headers + stores
     let currentCycle = 'Week 1&3';
-    let inBlock = false;
+    let currentDayColumns: { col: number; day: string }[] = [];
+    let inStoreBlock = false;
 
-    for (let rowIdx = 1; rowIdx < data.length; rowIdx++) {
+    for (let rowIdx = 0; rowIdx < data.length; rowIdx++) {
       const row = data[rowIdx] || [];
-      const firstCell = String(row[0] || '').trim().toLowerCase();
+      const rowStrs = row.map(c => String(c || '').trim());
+      const rowJoined = rowStrs.join(' ');
 
-      // Check if this is a cycle header row
-      if (firstCell.includes('week')) {
-        if (firstCell.includes('2') && firstCell.includes('4')) {
-          currentCycle = 'Week 2&4';
-        } else if (firstCell.includes('1') && firstCell.includes('3')) {
-          currentCycle = 'Week 1&3';
-        }
-        inBlock = true;
+      // Check for cycle header
+      const newCycle = detectCycleFromText(rowJoined);
+      if (newCycle) {
+        currentCycle = newCycle;
+        inStoreBlock = false; // Reset - need new day headers
         continue;
       }
 
-      // Check if this is the day header row
-      const rowStr = row.map(c => String(c || '').toLowerCase()).join(' ');
-      if (rowStr.includes('monday') || rowStr.includes('mon')) {
-        inBlock = true;
+      // Check if this row is a day header row
+      const dayCols = findDayColumns(row);
+      if (dayCols.length >= 3) {
+        currentDayColumns = dayCols;
+        inStoreBlock = true;
         continue;
       }
 
-      if (!inBlock) continue;
+      // If we haven't found day columns yet, skip
+      if (!inStoreBlock || currentDayColumns.length === 0) continue;
 
-      // Parse store entries from each day column
-      for (const { col, day } of dayColumns) {
+      // Check if entire row is empty - may signal end of a section
+      const allEmpty = rowStrs.every(s => !s);
+      if (allEmpty) continue;
+
+      // Parse store entries from day columns
+      for (const { col, day } of currentDayColumns) {
         const cellValue = String(row[col] || '').trim();
-        if (!cellValue || cellValue.toLowerCase() === 'off' || cellValue === '-') continue;
+        if (!isStoreCell(cellValue)) continue;
 
         const { storeName, storeCode } = extractStoreCode(cellValue);
         if (!storeName) continue;
 
-        // Check if we already have this user+store+cycle, if so add the day
-        const existing = entries.find(e =>
-          e.userEmail === userEmail &&
-          e.storeId === storeCode &&
-          e.cycle === currentCycle
-        );
-
-        if (existing) {
-          if (!existing.days.includes(day)) {
-            existing.days.push(day);
-          }
-        } else {
-          entries.push({
-            userEmail: userEmail || `unknown_${personName.replace(/\s/g, '_')}`,
-            firstName,
-            surname,
-            storeId: storeCode,
-            storeName,
-            cycle: currentCycle,
-            days: [day],
-          });
-        }
+        addOrMergeEntry(entries, {
+          userEmail: userEmail || `unknown_${personName.replace(/\s+/g, '_')}`,
+          firstName,
+          surname,
+          storeId: storeCode,
+          storeName,
+          cycle: currentCycle,
+          day,
+        });
       }
     }
   }

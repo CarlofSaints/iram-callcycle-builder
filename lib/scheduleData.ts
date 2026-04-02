@@ -3,25 +3,51 @@ import path from 'path';
 import { ScheduleRow, ParsedEntry, UploadResult } from './types';
 
 const FILE = path.join(process.cwd(), 'data', 'schedule.json');
+const TMP_FILE = '/tmp/iram_schedule.json';
 let _cache: ScheduleRow[] | null = null;
 
 export function loadSchedule(): ScheduleRow[] {
   if (_cache !== null) return _cache;
 
+  // Vercel: try /tmp first (survives across requests in same container)
+  if (process.env.VERCEL) {
+    try {
+      if (fs.existsSync(TMP_FILE)) {
+        _cache = JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
+        console.log(`[scheduleData] Loaded ${_cache!.length} rows from /tmp`);
+        return _cache!;
+      }
+    } catch (err) {
+      console.error('[scheduleData] /tmp read failed:', err);
+    }
+  }
+
+  // Try env var (baked at deploy, updated via API for new containers)
   const env = process.env.IRAM_CC_SCHEDULE_JSON;
   if (process.env.VERCEL && env) {
-    _cache = JSON.parse(env);
-    return _cache!;
+    try {
+      _cache = JSON.parse(env);
+      // Seed /tmp so future requests in this container are fast
+      try { fs.writeFileSync(TMP_FILE, env); } catch {}
+      console.log(`[scheduleData] Loaded ${_cache!.length} rows from env var`);
+      return _cache!;
+    } catch {}
   }
 
+  // Local dev: read from data/ file
   if (fs.existsSync(FILE)) {
-    _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-    return _cache!;
+    try {
+      _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
+      return _cache!;
+    } catch {}
   }
 
+  // Non-Vercel fallback for env var
   if (env) {
-    _cache = JSON.parse(env);
-    return _cache!;
+    try {
+      _cache = JSON.parse(env);
+      return _cache!;
+    } catch {}
   }
 
   return [];
@@ -109,24 +135,40 @@ export async function mergeIntoSchedule(
 
 async function saveSchedule(schedule: ScheduleRow[]) {
   _cache = schedule;
+  const json = JSON.stringify(schedule, null, 2);
 
+  // Vercel: always write to /tmp (container-level persistence)
+  if (process.env.VERCEL) {
+    try {
+      fs.writeFileSync(TMP_FILE, json);
+      console.log(`[scheduleData] Wrote ${schedule.length} rows to /tmp`);
+    } catch (err) {
+      console.error('[scheduleData] /tmp write failed:', err);
+    }
+  }
+
+  // Try local file write (works on dev, fails on Vercel read-only FS)
   try {
     const dir = path.dirname(FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(FILE, JSON.stringify(schedule, null, 2));
-    return;
+    fs.writeFileSync(FILE, json);
+    if (!process.env.VERCEL) return; // Local dev: file is sufficient
   } catch {
-    // Vercel read-only FS
+    // Expected on Vercel read-only FS
   }
 
+  // Vercel: update env var for cross-container persistence
   const token = process.env.VERCEL_TOKEN;
   const projectId = process.env.VERCEL_PROJECT_ID;
   if (token && projectId) {
     try {
       await upsertVercelEnvVar(token, projectId, schedule);
+      console.log(`[scheduleData] Env var updated (${schedule.length} rows)`);
     } catch (err) {
       console.error('[scheduleData] Vercel env var update failed:', err);
     }
+  } else if (process.env.VERCEL) {
+    console.warn('[scheduleData] VERCEL_TOKEN or VERCEL_PROJECT_ID not set — data may not persist across containers');
   }
 }
 

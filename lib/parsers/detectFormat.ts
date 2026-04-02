@@ -1,42 +1,74 @@
 import * as XLSX from 'xlsx';
 
-export type FileFormat = 'josh-standard' | 'ash-region' | 'josh-alt' | 'unknown';
+export type FileFormat = 'josh-standard' | 'ash-region' | 'josh-alt' | 'email-sheet' | 'simple-name' | 'unknown';
+
+const DAYS_SHORT = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
+function rowHasDays(row: string[], minMatch = 3): boolean {
+  let count = 0;
+  for (const cell of row) {
+    const lc = cell.toLowerCase().trim();
+    if (DAYS_SHORT.some(d => lc.startsWith(d))) count++;
+  }
+  return count >= minMatch;
+}
 
 export function detectFormat(workbook: XLSX.WorkBook): FileFormat {
-  const sheetNames = workbook.SheetNames.map(s => s.trim().toLowerCase());
+  const sheetNames = workbook.SheetNames.map(s => s.trim());
 
   // Josh ALT: sheets named "Week 1&3" and "Week 2&4"
-  const hasWeek13 = sheetNames.some(s => s.includes('week 1') && s.includes('3'));
-  const hasWeek24 = sheetNames.some(s => s.includes('week 2') && s.includes('4'));
-  if (hasWeek13 && hasWeek24 && sheetNames.length <= 4) {
+  const lowerNames = sheetNames.map(s => s.toLowerCase());
+  const hasWeek13 = lowerNames.some(s => s.includes('week 1') && s.includes('3'));
+  const hasWeek24 = lowerNames.some(s => s.includes('week 2') && s.includes('4'));
+  if (hasWeek13 && hasWeek24 && lowerNames.length <= 4) {
     return 'josh-alt';
   }
 
-  // Ash format: sheets with region names, row 1 has email
+  // Check for email-as-sheet-name pattern
+  const emailSheets = sheetNames.filter(s => s.includes('@'));
+  if (emailSheets.length > 0) {
+    return 'email-sheet';
+  }
+
+  // Ash format: any sheet where row 1 has an email address
   for (const name of workbook.SheetNames) {
     const sheet = workbook.Sheets[name];
     if (!sheet) continue;
-    const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
+    const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
     if (data.length > 0) {
-      const row1 = (data[0] || []).map(c => String(c || '').toLowerCase());
-      // Check if any cell in row 1 contains an @ sign (email)
+      const row1 = (data[0] || []).map(c => String(c || ''));
       if (row1.some(c => c.includes('@'))) {
         return 'ash-region';
       }
     }
   }
 
-  // Josh Standard: sheets named by person names, row 2 contains "week" info
-  if (sheetNames.length >= 2) {
-    for (const name of workbook.SheetNames) {
-      const sheet = workbook.Sheets[name];
-      if (!sheet) continue;
-      const data = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
-      if (data.length >= 3) {
-        const row2 = (data[1] || []).map(c => String(c || '').toLowerCase());
-        if (row2.some(c => c.includes('week'))) {
-          return 'josh-standard';
-        }
+  // Josh Standard: sheets with "week" text in the first few rows (before day headers)
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
+    if (data.length < 3) continue;
+
+    // Check first 3 rows for "week" text
+    for (let r = 0; r < Math.min(3, data.length); r++) {
+      const row = (data[r] || []).map(c => String(c || '').toLowerCase());
+      if (row.some(c => c.includes('week'))) {
+        return 'josh-standard';
+      }
+    }
+  }
+
+  // Simple name format: sheets named after people, day headers in first few rows
+  // This is the fallback for any file with day-of-week headers
+  for (const name of workbook.SheetNames) {
+    const sheet = workbook.Sheets[name];
+    if (!sheet) continue;
+    const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1 });
+    for (let r = 0; r < Math.min(5, data.length); r++) {
+      const row = (data[r] || []).map(c => String(c || ''));
+      if (rowHasDays(row)) {
+        return 'simple-name';
       }
     }
   }
