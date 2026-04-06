@@ -104,9 +104,10 @@ export async function mergeIntoSchedule(
         };
         rowsUpdated++;
       } else {
-        // No change — mark as LIVE
+        // No change — mark as LIVE, but always refresh channel
         schedule[existingIdx].action = 'LIVE';
         schedule[existingIdx].uploadedAt = now;
+        if (channel) schedule[existingIdx].channel = channel;
       }
     } else {
       // New row
@@ -124,6 +125,16 @@ export async function mergeIntoSchedule(
         uploadedBy,
       });
       rowsAdded++;
+    }
+  }
+
+  // Backfill channels on ALL schedule rows (fixes rows saved before store control was loaded)
+  if (storeLookup.size > 0) {
+    for (const row of schedule) {
+      if (!row.channel && row.storeId) {
+        const ch = storeLookup.get(row.storeId.toUpperCase());
+        if (ch) row.channel = ch;
+      }
     }
   }
 

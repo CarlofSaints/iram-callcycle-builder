@@ -49,6 +49,8 @@ function looksLikeStoreCode(s: string): boolean {
   if (!/\d/.test(t)) return false;
   // Must start with a letter or digit
   if (!/^[A-Za-z0-9]/.test(t)) return false;
+  // Pure numeric codes (e.g. "2152", "2407") — valid Perigee store codes
+  if (/^\d{2,6}$/.test(t)) return true;
   // General pattern: letters, optional hyphen, digits (or mixed)
   return /^[A-Za-z]{1,5}-?[A-Za-z0-9-]*\d[A-Za-z0-9-]*$/.test(t);
 }
