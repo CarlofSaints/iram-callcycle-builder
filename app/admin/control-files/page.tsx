@@ -95,6 +95,12 @@ export default function ControlFilesPage() {
       formData.append('userEmail', session.email);
 
       const res = await fetch('/api/control-files/stores', { method: 'POST', body: formData });
+      if (!res.ok) {
+        let msg = `Upload failed (${res.status})`;
+        try { const d = await res.json(); msg = d.error || d.detail || msg; } catch { /* non-JSON response */ }
+        notify(msg, 'error');
+        return;
+      }
       const data = await res.json();
       if (data.ok) {
         notify(`Store control uploaded: ${data.totalStores} stores (${data.activeStores} active)`);
@@ -103,8 +109,8 @@ export default function ControlFilesPage() {
       } else {
         notify(data.error || 'Upload failed', 'error');
       }
-    } catch {
-      notify('Network error', 'error');
+    } catch (err) {
+      notify(`Upload error: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
     } finally {
       setStoreUploading(false);
     }
@@ -120,6 +126,12 @@ export default function ControlFilesPage() {
       formData.append('userEmail', session.email);
 
       const res = await fetch('/api/control-files/teams', { method: 'POST', body: formData });
+      if (!res.ok) {
+        let msg = `Upload failed (${res.status})`;
+        try { const d = await res.json(); msg = d.error || d.detail || msg; } catch { /* non-JSON response */ }
+        notify(msg, 'error');
+        return;
+      }
       const data = await res.json();
       if (data.ok) {
         notify(`Team control uploaded: ${data.totalEntries} entries, ${data.uniqueTeams} teams${data.unknownCount > 0 ? `, ${data.unknownCount} UNKNOWN` : ''}`);
@@ -128,8 +140,8 @@ export default function ControlFilesPage() {
       } else {
         notify(data.error || 'Upload failed', 'error');
       }
-    } catch {
-      notify('Network error', 'error');
+    } catch (err) {
+      notify(`Upload error: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
     } finally {
       setTeamUploading(false);
     }
@@ -151,8 +163,8 @@ export default function ControlFilesPage() {
       } else {
         notify(data.error || 'Upload failed', 'error');
       }
-    } catch {
-      notify('Network error', 'error');
+    } catch (err) {
+      notify(`Upload error: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
     } finally {
       setTemplateUploading(false);
     }
