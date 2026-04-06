@@ -28,6 +28,7 @@ export async function POST(req: NextRequest) {
     const file = formData.get('file') as File | null;
     const userName = formData.get('userName') as string || 'Unknown';
     const userEmail = formData.get('userEmail') as string || '';
+    const mode = formData.get('mode') === 'merge' ? 'merge' : 'replace';
 
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
@@ -88,14 +89,34 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No valid team rows found' }, { status: 400 });
     }
 
-    const uniqueTeams = new Set(teams.map(t => t.teamName)).size;
-    const uniqueMembers = new Set(teams.map(t => t.memberEmail.toLowerCase())).size;
-    const unknownCount = teams.filter(t =>
+    // Merge or replace
+    let finalTeams: TeamControlEntry[];
+    if (mode === 'merge') {
+      const existing = loadTeamControl();
+      if (existing && existing.teams.length > 0) {
+        const teamMap = new Map<string, TeamControlEntry>();
+        for (const t of existing.teams) {
+          teamMap.set(t.memberEmail.toLowerCase(), t);
+        }
+        for (const t of teams) {
+          teamMap.set(t.memberEmail.toLowerCase(), t);
+        }
+        finalTeams = [...teamMap.values()];
+      } else {
+        finalTeams = teams;
+      }
+    } else {
+      finalTeams = teams;
+    }
+
+    const uniqueTeams = new Set(finalTeams.map(t => t.teamName)).size;
+    const uniqueMembers = new Set(finalTeams.map(t => t.memberEmail.toLowerCase())).size;
+    const unknownCount = finalTeams.filter(t =>
       t.teamName.toUpperCase() === 'UNKNOWN' || !t.teamName
     ).length;
 
     await saveTeamControl({
-      teams,
+      teams: finalTeams,
       uploadedAt: new Date().toISOString(),
       uploadedBy: userEmail || userName,
     });
@@ -106,12 +127,12 @@ export async function POST(req: NextRequest) {
       type: 'control_file_upload',
       userName,
       userEmail,
-      detail: `Uploaded team control file: ${teams.length} entries, ${uniqueTeams} teams${unknownCount > 0 ? `, ${unknownCount} UNKNOWN` : ''}`,
+      detail: `Uploaded team control file (${mode}): ${teams.length} new, ${finalTeams.length} total, ${uniqueTeams} teams${unknownCount > 0 ? `, ${unknownCount} UNKNOWN` : ''}`,
     });
 
     return NextResponse.json({
       ok: true,
-      totalEntries: teams.length,
+      totalEntries: finalTeams.length,
       uniqueTeams,
       uniqueMembers,
       unknownCount,

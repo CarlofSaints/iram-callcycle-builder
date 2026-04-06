@@ -72,10 +72,11 @@ export async function POST(req: NextRequest) {
     let dataRows: string[][];
     let userName: string;
     let userEmail: string;
+    let mode: 'merge' | 'replace' = 'replace';
 
     if (contentType.includes('application/json') || contentType.includes('application/gzip')) {
       // Client-side parsed data (JSON or gzipped JSON)
-      let body: { headers: string[]; rows: string[][]; userName?: string; userEmail?: string };
+      let body: { headers: string[]; rows: string[][]; userName?: string; userEmail?: string; mode?: string };
 
       if (contentType.includes('application/gzip')) {
         const compressed = Buffer.from(await req.arrayBuffer());
@@ -93,12 +94,14 @@ export async function POST(req: NextRequest) {
       dataRows = body.rows;
       userName = body.userName || 'Unknown';
       userEmail = body.userEmail || '';
+      if (body.mode === 'merge') mode = 'merge';
     } else {
       // Legacy: FormData with Excel file
       const formData = await req.formData();
       const file = formData.get('file') as File | null;
       userName = formData.get('userName') as string || 'Unknown';
       userEmail = formData.get('userEmail') as string || '';
+      if (formData.get('mode') === 'merge') mode = 'merge';
 
       if (!file) {
         return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
@@ -121,20 +124,40 @@ export async function POST(req: NextRequest) {
       dataRows = rows.slice(1);
     }
 
-    const { stores, error } = processStoreRows(headers, dataRows);
+    const { stores: newStores, error } = processStoreRows(headers, dataRows);
 
     if (error) {
       return NextResponse.json({ error }, { status: 400 });
     }
 
-    if (stores.length === 0) {
+    if (newStores.length === 0) {
       return NextResponse.json({ error: 'No valid store rows found' }, { status: 400 });
     }
 
-    const activeStores = stores.filter(s => s.active).length;
+    // Merge or replace
+    let finalStores: StoreControlEntry[];
+    if (mode === 'merge') {
+      const existing = loadStoreControl();
+      if (existing && existing.stores.length > 0) {
+        const storeMap = new Map<string, StoreControlEntry>();
+        for (const s of existing.stores) {
+          storeMap.set(s.storeCode.toUpperCase(), s);
+        }
+        for (const s of newStores) {
+          storeMap.set(s.storeCode.toUpperCase(), s);
+        }
+        finalStores = [...storeMap.values()];
+      } else {
+        finalStores = newStores;
+      }
+    } else {
+      finalStores = newStores;
+    }
+
+    const activeStores = finalStores.filter(s => s.active).length;
 
     await saveStoreControl({
-      stores,
+      stores: finalStores,
       uploadedAt: new Date().toISOString(),
       uploadedBy: userEmail || userName,
     });
@@ -145,12 +168,12 @@ export async function POST(req: NextRequest) {
       type: 'control_file_upload',
       userName,
       userEmail,
-      detail: `Uploaded store control file: ${stores.length} stores (${activeStores} active)`,
+      detail: `Uploaded store control file (${mode}): ${newStores.length} new, ${finalStores.length} total (${activeStores} active)`,
     });
 
     return NextResponse.json({
       ok: true,
-      totalStores: stores.length,
+      totalStores: finalStores.length,
       activeStores,
     });
   } catch (err) {

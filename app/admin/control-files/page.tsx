@@ -55,6 +55,10 @@ export default function ControlFilesPage() {
   const [teamDragOver, setTeamDragOver] = useState(false);
   const teamInputRef = useRef<HTMLInputElement>(null);
 
+  // Upload confirmation modal
+  const [confirmModal, setConfirmModal] = useState<'store' | 'team' | null>(null);
+  const [keepExisting, setKeepExisting] = useState(true);
+
   // Perigee template (legacy reference data)
   const [templateFile, setTemplateFile] = useState<File | null>(null);
   const [templateUploading, setTemplateUploading] = useState(false);
@@ -85,7 +89,17 @@ export default function ControlFilesPage() {
     }
   }, [session]);
 
-  async function handleStoreUpload() {
+  function onStoreUploadClick() {
+    if (!storeFile) return;
+    if (storeStatus?.loaded) {
+      setKeepExisting(true);
+      setConfirmModal('store');
+    } else {
+      handleStoreUpload('replace');
+    }
+  }
+
+  async function handleStoreUpload(mode: 'merge' | 'replace') {
     if (!storeFile || !session) return;
     setStoreUploading(true);
     try {
@@ -114,6 +128,7 @@ export default function ControlFilesPage() {
         rows: dataRows,
         userName: `${session.name} ${session.surname}`,
         userEmail: session.email,
+        mode,
       };
 
       const jsonStr = JSON.stringify(payload);
@@ -159,7 +174,17 @@ export default function ControlFilesPage() {
     }
   }
 
-  async function handleTeamUpload() {
+  function onTeamUploadClick() {
+    if (!teamFile) return;
+    if (teamStatus?.loaded) {
+      setKeepExisting(true);
+      setConfirmModal('team');
+    } else {
+      handleTeamUpload('replace');
+    }
+  }
+
+  async function handleTeamUpload(mode: 'merge' | 'replace') {
     if (!teamFile || !session) return;
     setTeamUploading(true);
     try {
@@ -167,6 +192,7 @@ export default function ControlFilesPage() {
       formData.append('file', teamFile);
       formData.append('userName', `${session.name} ${session.surname}`);
       formData.append('userEmail', session.email);
+      formData.append('mode', mode);
 
       const res = await fetch('/api/control-files/teams', { method: 'POST', body: formData });
       if (!res.ok) {
@@ -188,6 +214,13 @@ export default function ControlFilesPage() {
     } finally {
       setTeamUploading(false);
     }
+  }
+
+  function onConfirmUpload() {
+    const mode = keepExisting ? 'merge' : 'replace';
+    if (confirmModal === 'store') handleStoreUpload(mode);
+    else if (confirmModal === 'team') handleTeamUpload(mode);
+    setConfirmModal(null);
   }
 
   async function handleTemplateUpload() {
@@ -236,6 +269,58 @@ export default function ControlFilesPage() {
     <div className="min-h-screen bg-gray-50">
       <Header session={session} onLogout={logout} />
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
+
+      {/* Upload confirmation modal */}
+      {confirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full mx-4 p-6 flex flex-col gap-4">
+            <h3 className="text-lg font-bold text-gray-900">
+              Load New {confirmModal === 'store' ? 'Store' : 'Team'} Control File
+            </h3>
+            <div className="text-sm text-gray-600 space-y-2">
+              <p>You&apos;re about to load a new control file.</p>
+              <p>
+                Lines that exist in your file that are common to the one already loaded
+                will be <strong>overwritten</strong>.
+              </p>
+              <p>
+                Lines that exist in the app but not in your file will{' '}
+                <strong>remain as is</strong> if the option below is checked.
+              </p>
+            </div>
+            <label className="flex items-start gap-3 cursor-pointer bg-gray-50 rounded-lg p-3 border border-gray-200">
+              <input
+                type="checkbox"
+                checked={keepExisting}
+                onChange={e => setKeepExisting(e.target.checked)}
+                className="mt-0.5 h-4 w-4 accent-[#7CC042] rounded"
+              />
+              <span className="text-sm text-gray-700">
+                Keep lines that do not exist in my control file
+              </span>
+            </label>
+            {!keepExisting && (
+              <p className="text-xs text-red-600 font-medium px-1">
+                All existing data will be removed and replaced with only the contents of your file.
+              </p>
+            )}
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setConfirmModal(null)}
+                className="flex-1 px-4 py-2 text-sm border border-gray-300 rounded-lg hover:bg-gray-50 transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={onConfirmUpload}
+                className="flex-1 px-4 py-2 text-sm font-bold text-white bg-[#7CC042] hover:bg-[#5a9830] rounded-lg transition-colors"
+              >
+                Proceed
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-screen-lg mx-auto px-4 py-8 flex flex-col gap-8">
         <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-4">
@@ -306,7 +391,7 @@ export default function ControlFilesPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={handleStoreUpload}
+              onClick={onStoreUploadClick}
               disabled={!storeFile || storeUploading}
               className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
@@ -408,7 +493,7 @@ export default function ControlFilesPage() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={handleTeamUpload}
+              onClick={onTeamUploadClick}
               disabled={!teamFile || teamUploading}
               className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
