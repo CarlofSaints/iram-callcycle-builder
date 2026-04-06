@@ -55,6 +55,12 @@ export default function ControlFilesPage() {
   const [teamDragOver, setTeamDragOver] = useState(false);
   const teamInputRef = useRef<HTMLInputElement>(null);
 
+  // Perigee template (legacy reference data)
+  const [templateFile, setTemplateFile] = useState<File | null>(null);
+  const [templateUploading, setTemplateUploading] = useState(false);
+  const [templateResult, setTemplateResult] = useState<{ ok?: boolean; error?: string; stores?: number; users?: number; teams?: number } | null>(null);
+  const templateInputRef = useRef<HTMLInputElement>(null);
+
   const notify = (message: string, type: 'success' | 'error' = 'success') =>
     setToast({ message, type });
 
@@ -126,6 +132,29 @@ export default function ControlFilesPage() {
       notify('Network error', 'error');
     } finally {
       setTeamUploading(false);
+    }
+  }
+
+  async function handleTemplateUpload() {
+    if (!templateFile || !session) return;
+    setTemplateUploading(true);
+    setTemplateResult(null);
+    try {
+      const formData = new FormData();
+      formData.append('file', templateFile);
+      const res = await fetch('/api/references', { method: 'POST', body: formData });
+      const data = await res.json();
+      setTemplateResult(data);
+      if (data.ok) {
+        notify(`Template loaded: ${data.stores} stores, ${data.users} users, ${data.teams} teams`);
+        setTemplateFile(null);
+      } else {
+        notify(data.error || 'Upload failed', 'error');
+      }
+    } catch {
+      notify('Network error', 'error');
+    } finally {
+      setTemplateUploading(false);
     }
   }
 
@@ -339,6 +368,46 @@ export default function ControlFilesPage() {
               </button>
             )}
           </div>
+        </section>
+
+        {/* Perigee Template Upload (legacy) */}
+        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4">
+          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Perigee Template (Reference Data)</h2>
+          <p className="text-xs text-gray-500">
+            Upload a full Perigee Call Schedule template to extract Store Dictionary, Email Dictionary, and Teams data.
+            Use this if the template structure has changed and you need to refresh legacy reference data.
+          </p>
+
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => templateInputRef.current?.click()}
+              className="text-sm border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-lg transition-colors"
+            >
+              {templateFile ? templateFile.name : 'Choose Template File'}
+            </button>
+            <input
+              ref={templateInputRef}
+              type="file"
+              accept=".xlsx,.xls,.xlsm"
+              className="hidden"
+              onChange={e => { if (e.target.files?.[0]) setTemplateFile(e.target.files[0]); }}
+            />
+            <button
+              onClick={handleTemplateUpload}
+              disabled={!templateFile || templateUploading}
+              className="bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+            >
+              {templateUploading ? 'Processing...' : 'Upload Template'}
+            </button>
+          </div>
+
+          {templateResult && (
+            <div className={`rounded-lg p-3 text-sm ${templateResult.ok ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
+              {templateResult.ok
+                ? `Reference data loaded: ${templateResult.stores} stores, ${templateResult.users} users, ${templateResult.teams} teams`
+                : templateResult.error}
+            </div>
+          )}
         </section>
       </main>
     </div>
