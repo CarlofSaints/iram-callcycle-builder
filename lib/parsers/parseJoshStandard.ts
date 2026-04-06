@@ -19,6 +19,10 @@ export function parseJoshStandard(workbook: XLSX.WorkBook, references: Reference
     emailLookup.set(fullName, { email: u.userEmail, firstName: u.firstName, surname: u.surname });
     emailLookup.set(u.firstName.toLowerCase().trim(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
     emailLookup.set(u.userEmail.toLowerCase().trim(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
+    const local = u.userEmail.split('@')[0].toLowerCase().trim();
+    if (local && !emailLookup.has(local)) {
+      emailLookup.set(local, { email: u.userEmail, firstName: u.firstName || local, surname: u.surname || '' });
+    }
   }
 
   for (const sheetName of workbook.SheetNames) {

@@ -33,6 +33,11 @@ export function parseEmailSheet(
       emailLookup.set(u.firstName.toLowerCase().trim(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
     }
     emailLookup.set(u.userEmail.toLowerCase().trim(), { email: u.userEmail, firstName: u.firstName, surname: u.surname });
+    // Also key by email local part (handles name-only sheet names like "Petro")
+    const local = u.userEmail.split('@')[0].toLowerCase().trim();
+    if (local && !emailLookup.has(local)) {
+      emailLookup.set(local, { email: u.userEmail, firstName: u.firstName || local, surname: u.surname || '' });
+    }
   }
 
   // Collect all team member emails for fuzzy matching
@@ -81,10 +86,24 @@ export function parseEmailSheet(
       const personName = sheetName.trim();
       if (personName.toLowerCase() === 'blank') continue;
       const ref = emailLookup.get(personName.toLowerCase());
-      sheetEmail = ref?.email || '';
-      sheetFirstName = ref?.firstName || personName.split(/\s+/)[0] || personName;
-      sheetSurname = ref?.surname || personName.split(/\s+/).slice(1).join(' ') || '';
-      // Don't skip name-only sheets anymore — section headers may resolve users
+      if (ref) {
+        sheetEmail = ref.email;
+        sheetFirstName = ref.firstName || personName.split(/\s+/)[0] || personName;
+        sheetSurname = ref.surname || personName.split(/\s+/).slice(1).join(' ') || '';
+      } else {
+        // emailLookup may lack firstName entries (team control has no names).
+        // Use resolveNameToEmail to match via email local part / fuzzy.
+        const resolved = resolveNameToEmail(personName, emailLookup, teamEmails);
+        if (resolved.email) {
+          sheetEmail = resolved.email;
+          sheetFirstName = resolved.firstName;
+          sheetSurname = resolved.surname;
+          warnings.push(resolved.warning);
+        } else {
+          sheetFirstName = personName.split(/\s+/)[0] || personName;
+          sheetSurname = personName.split(/\s+/).slice(1).join(' ') || '';
+        }
+      }
     }
 
     // --- Pre-scan: detect if file has "Name week" section headers ---

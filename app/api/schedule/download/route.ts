@@ -64,6 +64,23 @@ export async function GET(req: Request) {
     }
   }
 
+  // Build reverse lookup: email local part → full email + memberId
+  // (handles rows where userEmail is blank but firstName matches an email local part)
+  const localPartLookup = new Map<string, { email: string; memberId: string; teamName: string; teamLeader: string }>();
+  if (teamControl) {
+    for (const t of teamControl.teams) {
+      const local = t.memberEmail.split('@')[0].toLowerCase();
+      if (local && !localPartLookup.has(local)) {
+        localPartLookup.set(local, {
+          email: t.memberEmail,
+          memberId: t.memberId,
+          teamName: t.teamName,
+          teamLeader: t.teamLeader,
+        });
+      }
+    }
+  }
+
   // Pre-compute cycle per user: max week number across all entries
   const userCycleMap = new Map<string, number>();
   for (const row of schedule) {
@@ -284,19 +301,29 @@ export async function GET(req: Request) {
   }
 
   for (const [, { row, weekDays }] of mergedMap) {
-    const refUser = userLookup.get(row.userEmail.toLowerCase());
-    const teamInfo = teamMemberLookup.get(row.userEmail.toLowerCase());
-    const userCycle = userCycleMap.get(row.userEmail.toLowerCase()) || 1;
+    // Resolve email: use row.userEmail, or fallback via firstName → email local part
+    let resolvedEmail = row.userEmail;
+    if (!resolvedEmail && row.firstName) {
+      const byLocal = localPartLookup.get(row.firstName.toLowerCase());
+      if (byLocal) resolvedEmail = byLocal.email;
+    }
 
-    // Use memberId from team control for USER ID, fallback to reference userId
-    const userId = teamInfo?.memberId || refUser?.userId || '';
+    const refUser = userLookup.get(resolvedEmail.toLowerCase());
+    const teamInfo = teamMemberLookup.get(resolvedEmail.toLowerCase());
+    const userCycle = userCycleMap.get(resolvedEmail.toLowerCase()) ||
+      userCycleMap.get(row.userEmail.toLowerCase()) || 1;
+
+    // Use memberId from team control for USER ID, fallback via local part, then reference
+    const userId = teamInfo?.memberId ||
+      (!row.userEmail && row.firstName ? localPartLookup.get(row.firstName.toLowerCase())?.memberId : '') ||
+      refUser?.userId || '';
 
     // Use store control channel as fallback
     const channel = row.channel || storeControlLookup.get(row.storeId.toUpperCase()) || '';
 
     const r = scheduleSheet.addRow({
       userId,
-      userEmail: row.userEmail,
+      userEmail: resolvedEmail,
       firstName: row.firstName,
       surname: row.surname,
       userStatus: refUser?.status || 'ACTIVE',
@@ -351,7 +378,14 @@ export async function GET(req: Request) {
   // Add unique users from schedule
   const seenEmails = new Set<string>();
   for (const row of schedule) {
-    const key = row.userEmail.toLowerCase();
+    // Resolve email (same fallback as Schedule sheet)
+    let resolvedEmail = row.userEmail;
+    if (!resolvedEmail && row.firstName) {
+      const byLocal = localPartLookup.get(row.firstName.toLowerCase());
+      if (byLocal) resolvedEmail = byLocal.email;
+    }
+
+    const key = resolvedEmail.toLowerCase();
     if (seenEmails.has(key)) continue;
     seenEmails.add(key);
 
@@ -359,12 +393,14 @@ export async function GET(req: Request) {
     const teamInfo = teamMemberLookup.get(key);
     const userCycle = userCycleMap.get(key) || 1;
 
-    // Use memberId from team control for USER ID, fallback to reference
-    const userId = teamInfo?.memberId || refUser?.userId || '';
+    // Use memberId from team control for USER ID, fallback via local part, then reference
+    const userId = teamInfo?.memberId ||
+      (!row.userEmail && row.firstName ? localPartLookup.get(row.firstName.toLowerCase())?.memberId : '') ||
+      refUser?.userId || '';
 
     teamsUserSheet.addRow({
       userId,
-      userEmail: row.userEmail,
+      userEmail: resolvedEmail,
       firstName: row.firstName,
       surname: row.surname,
       status: refUser?.status || 'ACTIVE',
