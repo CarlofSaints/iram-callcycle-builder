@@ -3,6 +3,7 @@
 import { Session } from '@/lib/useAuth';
 import Link from 'next/link';
 import Image from 'next/image';
+import { usePathname } from 'next/navigation';
 
 interface HeaderProps {
   session: Session;
@@ -10,6 +11,17 @@ interface HeaderProps {
 }
 
 export default function Header({ session, onLogout }: HeaderProps) {
+  const pathname = usePathname();
+
+  function navClass(href: string) {
+    const isActive = pathname === href || pathname.startsWith(href + '/');
+    return `text-sm px-3 py-2 rounded-lg transition-colors font-bold ${
+      isActive
+        ? 'text-[#7CC042] bg-green-50'
+        : 'text-gray-600 hover:text-[#7CC042] hover:bg-green-50'
+    }`;
+  }
+
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
       <div className="max-w-screen-xl mx-auto px-4 h-[72px] flex items-center justify-between gap-4">
@@ -37,21 +49,21 @@ export default function Header({ session, onLogout }: HeaderProps) {
 
         {/* Center: Nav links */}
         <nav className="hidden md:flex items-center gap-1">
-          <Link href="/upload" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
+          <Link href="/upload" className={navClass('/upload')}>
             Upload
           </Link>
-          <Link href="/schedule" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
+          <Link href="/schedule" className={navClass('/schedule')}>
             Schedule
           </Link>
           {session.isAdmin && (
             <>
-              <Link href="/admin/users" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
+              <Link href="/admin/users" className={navClass('/admin/users')}>
                 Users
               </Link>
-              <Link href="/admin/control-files" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
+              <Link href="/admin/control-files" className={navClass('/admin/control-files')}>
                 Control Files
               </Link>
-              <Link href="/activity" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
+              <Link href="/activity" className={navClass('/activity')}>
                 Activity
               </Link>
             </>
