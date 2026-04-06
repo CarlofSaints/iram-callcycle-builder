@@ -48,6 +48,9 @@ export default function Header({ session, onLogout }: HeaderProps) {
               <Link href="/admin/users" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
                 Users
               </Link>
+              <Link href="/admin/control-files" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
+                Control Files
+              </Link>
               <Link href="/activity" className="text-sm text-gray-600 hover:text-[#7CC042] hover:bg-green-50 px-3 py-2 rounded-lg transition-colors font-medium">
                 Activity
               </Link>

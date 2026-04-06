@@ -2,6 +2,8 @@ import { NextResponse } from 'next/server';
 import ExcelJS from 'exceljs';
 import { loadSchedule } from '@/lib/scheduleData';
 import { loadReferences } from '@/lib/referenceData';
+import { loadStoreControl } from '@/lib/storeControlData';
+import { loadTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
 import { randomUUID } from 'crypto';
 
@@ -26,8 +28,10 @@ export async function GET(req: Request) {
 
   const schedule = loadSchedule();
   const references = loadReferences();
+  const storeControl = loadStoreControl();
+  const teamControl = loadTeamControl();
 
-  // Build user lookup for extra fields
+  // Build user lookup for extra fields (from references, which now bridges control files)
   const userLookup = new Map<string, {
     userId: string; status: string; firstName: string; surname: string;
   }>();
@@ -38,10 +42,26 @@ export async function GET(req: Request) {
     });
   }
 
-  // Build team lookup
-  const teamLookup = new Map<string, { teamName: string; leader: string }>();
-  for (const t of references.teams) {
-    teamLookup.set(t.teamName, t);
+  // Build team member lookup from team control (memberEmail → team info)
+  const teamMemberLookup = new Map<string, {
+    teamName: string; teamLeader: string; memberId: string;
+  }>();
+  if (teamControl) {
+    for (const t of teamControl.teams) {
+      teamMemberLookup.set(t.memberEmail.toLowerCase(), {
+        teamName: t.teamName,
+        teamLeader: t.teamLeader,
+        memberId: t.memberId,
+      });
+    }
+  }
+
+  // Build store control lookup (storeCode → channel)
+  const storeControlLookup = new Map<string, string>();
+  if (storeControl) {
+    for (const s of storeControl.stores) {
+      storeControlLookup.set(s.storeCode.toUpperCase(), s.channel);
+    }
   }
 
   // Pre-compute cycle per user: max week number across all entries
@@ -148,10 +168,17 @@ export async function GET(req: Request) {
 
   for (const [, { row, weekDays }] of mergedMap) {
     const refUser = userLookup.get(row.userEmail.toLowerCase());
+    const teamInfo = teamMemberLookup.get(row.userEmail.toLowerCase());
     const userCycle = userCycleMap.get(row.userEmail.toLowerCase()) || 1;
 
+    // Use memberId from team control for USER ID, fallback to reference userId
+    const userId = teamInfo?.memberId || refUser?.userId || '';
+
+    // Use store control channel as fallback
+    const channel = row.channel || storeControlLookup.get(row.storeId.toUpperCase()) || '';
+
     const r = scheduleSheet.addRow({
-      userId: refUser?.userId || '',
+      userId,
       userEmail: row.userEmail,
       firstName: row.firstName,
       surname: row.surname,
@@ -165,7 +192,7 @@ export async function GET(req: Request) {
       action: row.action,
       storeId: row.storeId,
       storeName: row.storeName,
-      channel: row.channel,
+      channel,
       cycle: String(userCycle),
       week1: weekDays.get(1) || '',
       week2: weekDays.get(2) || '',
@@ -212,9 +239,14 @@ export async function GET(req: Request) {
     seenEmails.add(key);
 
     const refUser = userLookup.get(key);
+    const teamInfo = teamMemberLookup.get(key);
     const userCycle = userCycleMap.get(key) || 1;
+
+    // Use memberId from team control for USER ID, fallback to reference
+    const userId = teamInfo?.memberId || refUser?.userId || '';
+
     teamsUserSheet.addRow({
-      userId: refUser?.userId || '',
+      userId,
       userEmail: row.userEmail,
       firstName: row.firstName,
       surname: row.surname,
@@ -224,8 +256,8 @@ export async function GET(req: Request) {
       leaveType: '',
       leaveStart: '',
       leaveEnd: '',
-      teamName: '',
-      teamLeader: '',
+      teamName: teamInfo?.teamName || '',
+      teamLeader: teamInfo?.teamLeader || '',
       asm: '',
       regionalManager: '',
       action: row.action,
@@ -244,12 +276,24 @@ export async function GET(req: Request) {
     { header: 'CHANNEL', key: 'channel', width: 20 },
   ];
   applyHeaderColors(storeSheet.getRow(1));
-  for (const s of references.stores) {
-    storeSheet.addRow({
-      storeId: s.storeCode,
-      storeName: s.storeName,
-      channel: s.channel,
-    });
+
+  // Prefer store control data; fallback to old references
+  if (storeControl && storeControl.stores.length > 0) {
+    for (const s of storeControl.stores) {
+      storeSheet.addRow({
+        storeId: s.storeCode,
+        storeName: s.storeName,
+        channel: s.channel,
+      });
+    }
+  } else {
+    for (const s of references.stores) {
+      storeSheet.addRow({
+        storeId: s.storeCode,
+        storeName: s.storeName,
+        channel: s.channel,
+      });
+    }
   }
 
   // === Sheet 4: Data (validation lists) ===

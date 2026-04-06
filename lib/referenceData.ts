@@ -1,6 +1,8 @@
 import fs from 'fs';
 import path from 'path';
 import { ReferenceData } from './types';
+import { loadStoreControl } from './storeControlData';
+import { loadTeamControl } from './teamControlData';
 
 const FILE = path.join(process.cwd(), 'data', 'references.json');
 const TMP_FILE = '/tmp/iram_references.json';
@@ -10,6 +12,58 @@ const EMPTY: ReferenceData = { stores: [], users: [], teams: [] };
 
 export function loadReferences(): ReferenceData {
   if (_cache !== null) return _cache;
+
+  // --- Bridge: build from control files if available ---
+  const storeControl = loadStoreControl();
+  const teamControl = loadTeamControl();
+
+  if (storeControl || teamControl) {
+    const ref: ReferenceData = { stores: [], users: [], teams: [] };
+
+    // Stores from store control
+    if (storeControl) {
+      ref.stores = storeControl.stores.map(s => ({
+        storeCode: s.storeCode,
+        storeName: s.storeName,
+        channel: s.channel,
+      }));
+    }
+
+    // Users + teams from team control
+    if (teamControl) {
+      const seenEmails = new Set<string>();
+      for (const t of teamControl.teams) {
+        const emailKey = t.memberEmail.toLowerCase();
+        if (!seenEmails.has(emailKey)) {
+          seenEmails.add(emailKey);
+          ref.users.push({
+            userId: t.memberId,
+            userEmail: t.memberEmail,
+            firstName: '',
+            surname: '',
+            status: 'ACTIVE',
+          });
+        }
+      }
+
+      // Unique teams with leaders
+      const seenTeams = new Set<string>();
+      for (const t of teamControl.teams) {
+        if (t.teamName && !seenTeams.has(t.teamName)) {
+          seenTeams.add(t.teamName);
+          ref.teams.push({
+            teamName: t.teamName,
+            leader: t.teamLeader,
+          });
+        }
+      }
+    }
+
+    _cache = ref;
+    return ref;
+  }
+
+  // --- Legacy fallback: load from old persistence ---
 
   // Vercel: try /tmp first
   if (process.env.VERCEL) {

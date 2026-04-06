@@ -1,75 +1,62 @@
 import fs from 'fs';
 import path from 'path';
+import { TeamControlData } from './types';
 
-export interface ActivityEntry {
-  id: string;
-  timestamp: string;
-  type: 'login' | 'upload' | 'download' | 'user_created' | 'user_updated' | 'user_deleted' | 'password_changed' | 'schedule_edit' | 'schedule_delete' | 'control_file_upload';
-  userName: string;
-  userEmail: string;
-  detail?: string;
-}
+const FILE = path.join(process.cwd(), 'data', 'teamControl.json');
+const TMP_FILE = '/tmp/iram_team_control.json';
+const ENV_KEY = 'IRAM_CC_TEAM_CONTROL_JSON';
+let _cache: TeamControlData | null = null;
 
-const MAX_ENTRIES = 1000;
-const FILE = path.join(process.cwd(), 'data', 'activityLog.json');
-const TMP_FILE = '/tmp/iram_activity.json';
-let _cache: ActivityEntry[] | null = null;
-
-export function loadActivityLog(): ActivityEntry[] {
+export function loadTeamControl(): TeamControlData | null {
   if (_cache !== null) return _cache;
 
-  // Vercel: try /tmp first (survives across requests in same container)
+  // Vercel: try /tmp first
   if (process.env.VERCEL) {
     try {
       if (fs.existsSync(TMP_FILE)) {
         _cache = JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
-        return _cache!;
+        return _cache;
       }
     } catch {}
   }
 
-  const env = process.env.IRAM_CC_ACTIVITY_LOG_JSON;
+  const env = process.env[ENV_KEY];
   if (process.env.VERCEL && env) {
     try {
       _cache = JSON.parse(env);
       try { fs.writeFileSync(TMP_FILE, env); } catch {}
-      return _cache!;
+      return _cache;
     } catch {}
   }
 
+  // Local dev: read from data/ file
   if (fs.existsSync(FILE)) {
     try {
       _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-      return _cache!;
+      return _cache;
     } catch {}
   }
 
   if (env) {
     try {
       _cache = JSON.parse(env);
-      return _cache!;
+      return _cache;
     } catch {}
   }
 
-  return [];
+  return null;
 }
 
-export async function addActivity(entry: ActivityEntry): Promise<void> {
-  const log = loadActivityLog();
-  log.unshift(entry);
-  if (log.length > MAX_ENTRIES) log.splice(MAX_ENTRIES);
-  await saveActivityLog(log);
-}
+export async function saveTeamControl(data: TeamControlData) {
+  _cache = data;
+  const json = JSON.stringify(data);
 
-async function saveActivityLog(log: ActivityEntry[]) {
-  _cache = log;
-  const json = JSON.stringify(log, null, 2);
-
-  // Vercel: write to /tmp for container-level persistence
+  // Vercel: write to /tmp
   if (process.env.VERCEL) {
     try { fs.writeFileSync(TMP_FILE, json); } catch {}
   }
 
+  // Try local file write
   try {
     const dir = path.dirname(FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -79,33 +66,33 @@ async function saveActivityLog(log: ActivityEntry[]) {
     // Vercel read-only FS
   }
 
+  // Vercel: update env var for cross-container persistence
   const token = process.env.VERCEL_TOKEN;
   const projectId = process.env.VERCEL_PROJECT_ID;
   if (token && projectId) {
     try {
-      await upsertVercelEnvVar(token, projectId, log);
+      await upsertVercelEnvVar(token, projectId, json);
     } catch (err) {
-      console.error('[activityLog] Vercel env var update failed:', err);
+      console.error('[teamControlData] Vercel env var update failed:', err);
     }
   }
 }
 
-async function upsertVercelEnvVar(token: string, projectId: string, log: ActivityEntry[]) {
+async function upsertVercelEnvVar(token: string, projectId: string, value: string) {
   const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
     headers: { Authorization: `Bearer ${token}` },
   });
   if (!listRes.ok) return;
 
   const { envs } = await listRes.json() as { envs: { id: string; key: string }[] };
-  const envRecord = envs.find(e => e.key === 'IRAM_CC_ACTIVITY_LOG_JSON');
-  const value = JSON.stringify(log);
+  const envRecord = envs.find(e => e.key === ENV_KEY);
 
   if (!envRecord) {
     await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        key: 'IRAM_CC_ACTIVITY_LOG_JSON',
+        key: ENV_KEY,
         value,
         type: 'plain',
         target: ['production', 'preview', 'development'],

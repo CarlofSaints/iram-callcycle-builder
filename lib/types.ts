@@ -48,3 +48,42 @@ export interface UploadResult {
   totalRows: number;
   warnings: string[];
 }
+
+// --- Control file types ---
+
+export interface StoreControlEntry {
+  country: string;
+  province: string;
+  channel: string;
+  storeName: string;
+  storeCode: string;
+  active: boolean;
+  longitude: string;
+  latitude: string;
+  locationStatus: string;
+  ignoreLocationData: boolean;
+  email: string;
+  createdBy: string;
+  updatedBy: string;
+}
+
+export interface StoreControlData {
+  stores: StoreControlEntry[];
+  uploadedAt: string;
+  uploadedBy: string;
+}
+
+export interface TeamControlEntry {
+  teamName: string;
+  teamLeader: string;
+  teamLeaderEmail: string;
+  teamLeaderId: string;
+  memberEmail: string;
+  memberId: string;
+}
+
+export interface TeamControlData {
+  teams: TeamControlEntry[];
+  uploadedAt: string;
+  uploadedBy: string;
+}

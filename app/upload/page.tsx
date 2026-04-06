@@ -22,12 +22,6 @@ export default function UploadPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  // Reference upload
-  const [refFile, setRefFile] = useState<File | null>(null);
-  const [refUploading, setRefUploading] = useState(false);
-  const [refResult, setRefResult] = useState<{ ok?: boolean; error?: string; stores?: number; users?: number; teams?: number } | null>(null);
-  const refInputRef = useRef<HTMLInputElement>(null);
-
   async function handleUpload() {
     if (!file || !session) return;
     setUploading(true);
@@ -49,23 +43,6 @@ export default function UploadPage() {
     }
   }
 
-  async function handleRefUpload() {
-    if (!refFile) return;
-    setRefUploading(true);
-    setRefResult(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', refFile);
-      const res = await fetch('/api/references', { method: 'POST', body: formData });
-      const data = await res.json();
-      setRefResult(data);
-    } catch {
-      setRefResult({ error: 'Network error' });
-    } finally {
-      setRefUploading(false);
-    }
-  }
-
   if (loading || !session) return null;
 
   return (
@@ -84,7 +61,7 @@ export default function UploadPage() {
 
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
             <p className="font-semibold">Important:</p>
-            <p className="mt-1">Sheets that are <strong>not</strong> labelled with an email address (e.g. &quot;ntethelelo@iram.co.za&quot;) will only be processed if reference data has been uploaded and the person&apos;s name can be matched. If the sheet name is a person&apos;s name, make sure reference data is uploaded first, or rename the sheet to the user&apos;s Perigee email address.</p>
+            <p className="mt-1">Sheets that are <strong>not</strong> labelled with an email address (e.g. &quot;ntethelelo@iram.co.za&quot;) will only be processed if control files have been uploaded and the person&apos;s name can be matched. If the sheet name is a person&apos;s name, make sure control files are uploaded first via <strong>Admin &gt; Control Files</strong>, or rename the sheet to the user&apos;s Perigee email address.</p>
           </div>
 
           <div
@@ -168,45 +145,6 @@ export default function UploadPage() {
             </div>
           )}
         </section>
-
-        {/* Reference Data Upload (admin only) */}
-        {session.isAdmin && (
-          <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4">
-            <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Upload Reference Data (Perigee Template)</h2>
-            <p className="text-xs text-gray-500">Upload a Perigee Call Schedule template to extract Store Dictionary, Email Dictionary, and Teams data.</p>
-
-            <div className="flex items-center gap-3">
-              <button
-                onClick={() => refInputRef.current?.click()}
-                className="text-sm border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-lg transition-colors"
-              >
-                {refFile ? refFile.name : 'Choose Template File'}
-              </button>
-              <input
-                ref={refInputRef}
-                type="file"
-                accept=".xlsx,.xls,.xlsm"
-                className="hidden"
-                onChange={e => { if (e.target.files?.[0]) setRefFile(e.target.files[0]); }}
-              />
-              <button
-                onClick={handleRefUpload}
-                disabled={!refFile || refUploading}
-                className="bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
-              >
-                {refUploading ? 'Processing...' : 'Upload Reference Data'}
-              </button>
-            </div>
-
-            {refResult && (
-              <div className={`rounded-lg p-3 text-sm ${refResult.ok ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-                {refResult.ok
-                  ? `Reference data loaded: ${refResult.stores} stores, ${refResult.users} users, ${refResult.teams} teams`
-                  : refResult.error}
-              </div>
-            )}
-          </section>
-        )}
       </main>
     </div>
   );

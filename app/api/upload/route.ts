@@ -29,7 +29,7 @@ export async function POST(req: NextRequest) {
     const needsRefData = ['josh-standard', 'josh-alt', 'email-sheet', 'simple-name'].includes(format);
     if (needsRefData && references.users.length === 0) {
       warnings.unshift(
-        '⚠ No reference data loaded. Sheets named by person (not email address) cannot be matched to Perigee user emails. Please upload reference data first via the "Upload Reference Data" section.'
+        '⚠ No control files loaded. Sheets named by person (not email address) cannot be matched to Perigee user emails. Please upload control files first via Admin > Control Files.'
       );
     }
 
