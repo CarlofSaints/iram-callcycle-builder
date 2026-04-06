@@ -45,3 +45,5 @@ next-env.d.ts
 # control file data (uploaded at runtime)
 data/storeControl.json
 data/teamControl.json
+
+.env*.local

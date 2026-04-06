@@ -1,4 +1,4 @@
-import { ParsedEntry } from '../types';
+import { ParsedEntry, TeamControlEntry } from '../types';
 
 const DAYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
 const DAYS_SHORT = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
@@ -133,6 +133,8 @@ export function isStoreCell(value: string): boolean {
   if (v === 't & a' || v === 't&a' || v === 'ta') return false;
   if (v === 'missed stores' || v.startsWith('missed stores')) return false;
   if (v === 'monday' || v === 'tuesday' || v === 'wednesday' || v === 'thursday' || v === 'friday' || v === 'saturday' || v === 'sunday') return false;
+  // Skip "Name week X &Y" section headers (e.g. "Petro week 1 &3")
+  if (/^[a-z]+(?:[.\s][a-z]+)?\s+week\s+\d/i.test(v)) return false;
   // Must have at least 3 chars to be a real store
   if (v.length < 3) return false;
   return true;
@@ -220,4 +222,117 @@ export function extractMarkersFromRow(row: (string | number | null)[]): { email:
   const week = extractWeekFromMarker(joined);
 
   return { email, week };
+}
+
+/**
+ * Extract a person name + cycle from a "Name week X &Y" section header cell.
+ * "Petro week 1 &3" → { name: "Petro", cycle: "Week 1&3" }
+ * "Week 1 &3" (no name prefix) → null (first word IS "week")
+ */
+export function extractNameFromSectionHeader(text: string): { name: string; cycle: string } | null {
+  const match = text.trim().match(/^([A-Za-z]+(?:[.\s][A-Za-z]+)?)\s+week\s+(\d)\s*[&,]\s*(\d)/i);
+  if (!match) return null;
+  // Reject if the "name" is literally "week" (e.g. "week week 1 &3" — degenerate)
+  if (match[1].toLowerCase() === 'week') return null;
+  const a = match[2], b = match[3];
+  let cycle = `Week ${a}&${b}`;
+  if ((a === '2' && b === '4') || (a === '4' && b === '2')) cycle = 'Week 2&4';
+  else if ((a === '1' && b === '3') || (a === '3' && b === '1')) cycle = 'Week 1&3';
+  return { name: match[1].trim(), cycle };
+}
+
+export interface NameResolution {
+  email: string;
+  firstName: string;
+  surname: string;
+  matchType: 'exact-ref' | 'exact-local' | 'fuzzy' | 'unresolved';
+  warning: string;
+}
+
+/**
+ * Resolve a first-name string (e.g. "Petro") to a Perigee email.
+ * Cascade:
+ *  1. Exact match in reference data emailLookup (by firstName key)
+ *  2. Exact match on team control email local part
+ *  3. Fuzzy prefix/contains on email local parts
+ *  4. Unresolved
+ */
+export function resolveNameToEmail(
+  name: string,
+  emailLookup: Map<string, { email: string; firstName: string; surname: string }>,
+  teamEmails: string[],
+): NameResolution {
+  const nameLower = name.toLowerCase().trim();
+
+  // 1. Exact match in reference data (firstName lookup populated by caller)
+  const refMatch = emailLookup.get(nameLower);
+  if (refMatch) {
+    return {
+      email: refMatch.email,
+      firstName: refMatch.firstName || name,
+      surname: refMatch.surname || '',
+      matchType: 'exact-ref',
+      warning: `Matched "${name}" to "${refMatch.email}" via reference data`,
+    };
+  }
+
+  // 2. Exact match on email local part (before @)
+  for (const email of teamEmails) {
+    const local = email.split('@')[0].toLowerCase();
+    if (local === nameLower) {
+      return {
+        email,
+        firstName: name,
+        surname: '',
+        matchType: 'exact-local',
+        warning: `Matched "${name}" to "${email}" via email local part`,
+      };
+    }
+  }
+
+  // 3. Fuzzy: prefix or contains on local parts
+  const fuzzyMatches: string[] = [];
+  for (const email of teamEmails) {
+    const local = email.split('@')[0].toLowerCase();
+    if (local.startsWith(nameLower) || nameLower.startsWith(local)) {
+      fuzzyMatches.push(email);
+    }
+  }
+  // Also try Levenshtein-like: match if edit distance is small (simple substring check)
+  if (fuzzyMatches.length === 0) {
+    for (const email of teamEmails) {
+      const local = email.split('@')[0].toLowerCase();
+      if (local.includes(nameLower) || nameLower.includes(local)) {
+        fuzzyMatches.push(email);
+      }
+    }
+  }
+
+  if (fuzzyMatches.length === 1) {
+    return {
+      email: fuzzyMatches[0],
+      firstName: name,
+      surname: '',
+      matchType: 'fuzzy',
+      warning: `Fuzzy-matched "${name}" to "${fuzzyMatches[0]}"`,
+    };
+  }
+  if (fuzzyMatches.length > 1) {
+    return {
+      email: fuzzyMatches[0],
+      firstName: name,
+      surname: '',
+      matchType: 'fuzzy',
+      warning: `Multiple matches for "${name}": ${fuzzyMatches.join(', ')} — using ${fuzzyMatches[0]}`,
+    };
+  }
+
+  // 4. Unresolved
+  return {
+    email: '',
+    firstName: name,
+    surname: '',
+    matchType: 'unresolved',
+    warning: `Could not find email match for "${name}"`,
+  };
 }

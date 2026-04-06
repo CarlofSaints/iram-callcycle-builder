@@ -82,13 +82,22 @@ async function upsertVercelEnvVar(token: string, projectId: string, value: strin
   const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!listRes.ok) return;
+  if (!listRes.ok) {
+    const body = await listRes.text().catch(() => '');
+    console.error(`[teamControlData] Vercel env list failed: ${listRes.status} ${body.substring(0, 200)}`);
+    return;
+  }
 
   const { envs } = await listRes.json() as { envs: { id: string; key: string }[] };
+  if (!envs) {
+    console.error('[teamControlData] Vercel env list returned no envs array');
+    return;
+  }
+
   const envRecord = envs.find(e => e.key === ENV_KEY);
 
   if (!envRecord) {
-    await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
+    const createRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
       method: 'POST',
       headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -98,12 +107,24 @@ async function upsertVercelEnvVar(token: string, projectId: string, value: strin
         target: ['production', 'preview', 'development'],
       }),
     });
+    if (!createRes.ok) {
+      const body = await createRes.text().catch(() => '');
+      console.error(`[teamControlData] Vercel env CREATE failed: ${createRes.status} ${body.substring(0, 200)}`);
+    } else {
+      console.log(`[teamControlData] Vercel env var created (${value.length} chars)`);
+    }
     return;
   }
 
-  await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envRecord.id}`, {
+  const patchRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envRecord.id}`, {
     method: 'PATCH',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ value }),
   });
+  if (!patchRes.ok) {
+    const body = await patchRes.text().catch(() => '');
+    console.error(`[teamControlData] Vercel env PATCH failed: ${patchRes.status} ${body.substring(0, 200)}`);
+  } else {
+    console.log(`[teamControlData] Vercel env var updated (${value.length} chars)`);
+  }
 }

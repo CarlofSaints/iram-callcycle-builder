@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { parseCallCycleFile } from '@/lib/parsers';
 import { loadReferences } from '@/lib/referenceData';
+import { loadTeamControl } from '@/lib/teamControlData';
 import { mergeIntoSchedule } from '@/lib/scheduleData';
 import { addActivity } from '@/lib/activityLogData';
 import { sendUploadNotification } from '@/lib/email';
@@ -21,9 +22,11 @@ export async function POST(req: NextRequest) {
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const references = loadReferences();
+    const teamControlData = loadTeamControl();
+    const teamControlEntries = teamControlData?.teams;
 
     // Parse the file
-    const { format, entries, warnings } = parseCallCycleFile(buffer, references);
+    const { format, entries, warnings } = parseCallCycleFile(buffer, references, teamControlEntries);
 
     // Warn if reference data is empty and format requires it
     const needsRefData = ['josh-standard', 'josh-alt', 'email-sheet', 'simple-name'].includes(format);

@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { ParsedEntry, ReferenceData } from '../types';
+import { ParsedEntry, ReferenceData, TeamControlEntry } from '../types';
 import { detectFormat, FileFormat } from './detectFormat';
 import { parseJoshStandard } from './parseJoshStandard';
 import { parseAshFormat } from './parseAshFormat';
@@ -14,7 +14,11 @@ export interface ParseResult {
   warnings: string[];
 }
 
-export function parseCallCycleFile(buffer: Buffer, references: ReferenceData): ParseResult {
+export function parseCallCycleFile(
+  buffer: Buffer,
+  references: ReferenceData,
+  teamControl?: TeamControlEntry[],
+): ParseResult {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
   const format = detectFormat(workbook);
 
@@ -47,7 +51,7 @@ export function parseCallCycleFile(buffer: Buffer, references: ReferenceData): P
       break;
     }
     case 'email-sheet': {
-      const result = parseEmailSheet(workbook, references);
+      const result = parseEmailSheet(workbook, references, teamControl);
       entries = result.entries;
       warnings = result.warnings;
       break;
