@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { loadSchedule, updateScheduleRow, deleteScheduleRow } from '@/lib/scheduleData';
+import { loadSchedule, updateScheduleRow, deleteScheduleRow, clearSchedule } from '@/lib/scheduleData';
 import { addActivity } from '@/lib/activityLogData';
 import { ScheduleRow } from '@/lib/types';
 
@@ -10,6 +10,39 @@ export async function GET() {
   return NextResponse.json(schedule, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
   });
+}
+
+export async function POST(req: NextRequest) {
+  try {
+    const { action, userName, userEmail } = await req.json() as {
+      action: string;
+      userName: string;
+      userEmail: string;
+    };
+
+    if (action !== 'clear') {
+      return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
+    }
+
+    const current = loadSchedule();
+    const rowCount = current.length;
+
+    await clearSchedule();
+
+    await addActivity({
+      id: crypto.randomUUID(),
+      timestamp: new Date().toISOString(),
+      type: 'schedule_clear',
+      userName,
+      userEmail,
+      detail: `Cleared entire schedule (${rowCount} rows removed)`,
+    });
+
+    return NextResponse.json({ ok: true, rowsCleared: rowCount });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error';
+    return NextResponse.json({ error: message }, { status: 500 });
+  }
 }
 
 export async function PUT(req: NextRequest) {

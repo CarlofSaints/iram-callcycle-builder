@@ -149,6 +149,10 @@ export async function deleteScheduleRow(index: number): Promise<ScheduleRow[]> {
   return schedule;
 }
 
+export async function clearSchedule(): Promise<void> {
+  await saveSchedule([]);
+}
+
 export async function saveSchedule(schedule: ScheduleRow[]) {
   _cache = schedule;
   const json = JSON.stringify(schedule, null, 2);

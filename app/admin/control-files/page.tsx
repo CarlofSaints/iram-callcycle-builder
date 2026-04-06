@@ -370,12 +370,12 @@ export default function ControlFilesPage() {
           </div>
         </section>
 
-        {/* Perigee Template Upload (legacy) */}
+        {/* Perigee Template Upload */}
         <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4">
-          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Perigee Template (Reference Data)</h2>
+          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Perigee Call Schedule Template</h2>
           <p className="text-xs text-gray-500">
-            Upload a full Perigee Call Schedule template to extract Store Dictionary, Email Dictionary, and Teams data.
-            Use this if the template structure has changed and you need to refresh legacy reference data.
+            Upload an updated Perigee Call Schedule template if the sheet structure has changed.
+            This only provides the export format — store, user, and team data come from the control files above.
           </p>
 
           <div className="flex items-center gap-3">

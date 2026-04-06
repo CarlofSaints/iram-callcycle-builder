@@ -54,6 +54,12 @@ export default function SchedulePage() {
   const [saving, setSaving] = useState(false);
   const [editError, setEditError] = useState('');
 
+  // Clear schedule modal state
+  const [showClearModal, setShowClearModal] = useState(false);
+  const [clearStep, setClearStep] = useState<1 | 2>(1);
+  const [clearInput, setClearInput] = useState('');
+  const [clearing, setClearing] = useState(false);
+
   useEffect(() => {
     if (session) {
       fetch('/api/schedule', { cache: 'no-store' }).then(r => r.json()).then(setSchedule);
@@ -160,6 +166,47 @@ export default function SchedulePage() {
     setEditRow({ ...editRow, cycle: updated.join(',') });
   }
 
+  function openClearModal() {
+    setShowClearModal(true);
+    setClearStep(1);
+    setClearInput('');
+  }
+
+  function closeClearModal() {
+    setShowClearModal(false);
+    setClearStep(1);
+    setClearInput('');
+  }
+
+  function handleClearStepNext() {
+    if (clearStep === 1 && clearInput === 'DELETE') {
+      setClearStep(2);
+      setClearInput('');
+    }
+  }
+
+  async function handleClearConfirm() {
+    if (clearInput !== 'CONFIRM' || !session) return;
+    setClearing(true);
+    try {
+      const res = await fetch('/api/schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          action: 'clear',
+          userName: `${session.name} ${session.surname}`,
+          userEmail: session.email,
+        }),
+      });
+      if (res.ok) {
+        setSchedule([]);
+        closeClearModal();
+      }
+    } finally {
+      setClearing(false);
+    }
+  }
+
   async function handleDownload() {
     if (!session) return;
     setDownloading(true);
@@ -191,13 +238,24 @@ export default function SchedulePage() {
             <h1 className="text-xl font-bold text-gray-900">Call Schedule</h1>
             <p className="text-sm text-gray-500 mt-0.5">{schedule.length} total rows</p>
           </div>
-          <button
-            onClick={handleDownload}
-            disabled={downloading || schedule.length === 0}
-            className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
-          >
-            {downloading ? 'Generating...' : 'Download Excel'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleDownload}
+              disabled={downloading || schedule.length === 0}
+              className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+            >
+              {downloading ? 'Generating...' : 'Download Excel'}
+            </button>
+            {session?.isAdmin && (
+              <button
+                onClick={openClearModal}
+                disabled={schedule.length === 0}
+                className="bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+              >
+                Clear Schedule
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Filters */}
@@ -422,6 +480,85 @@ export default function SchedulePage() {
             </table>
           </div>
         </section>
+
+        {/* Clear Schedule Modal */}
+        {showClearModal && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeClearModal}>
+            <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6 flex flex-col gap-5" onClick={e => e.stopPropagation()}>
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-full bg-red-100 flex items-center justify-center shrink-0">
+                  <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5 text-red-600" viewBox="0 0 20 20" fill="currentColor">
+                    <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
+                  </svg>
+                </div>
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900">Clear Entire Schedule</h3>
+                  <p className="text-sm text-gray-500">This will permanently remove all {schedule.length} rows</p>
+                </div>
+              </div>
+
+              {clearStep === 1 ? (
+                <div className="flex flex-col gap-3">
+                  <p className="text-sm text-gray-700">
+                    Type <strong className="text-red-600 font-mono">DELETE</strong> below to proceed to the final confirmation step.
+                  </p>
+                  <input
+                    type="text"
+                    value={clearInput}
+                    onChange={e => setClearInput(e.target.value.toUpperCase())}
+                    placeholder="Type DELETE"
+                    className="border-2 border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-center focus:outline-none focus:border-red-500 tracking-widest"
+                    autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') handleClearStepNext(); }}
+                  />
+                  <div className="flex justify-end gap-3">
+                    <button onClick={closeClearModal} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClearStepNext}
+                      disabled={clearInput !== 'DELETE'}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-30 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+                    >
+                      Next
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-3">
+                  <div className="bg-red-50 border border-red-200 rounded-lg p-3">
+                    <p className="text-sm text-red-800 font-semibold">Final step — this cannot be undone!</p>
+                    <p className="text-xs text-red-600 mt-1">All {schedule.length} schedule rows will be permanently deleted.</p>
+                  </div>
+                  <p className="text-sm text-gray-700">
+                    Type <strong className="text-red-600 font-mono">CONFIRM</strong> to clear the schedule.
+                  </p>
+                  <input
+                    type="text"
+                    value={clearInput}
+                    onChange={e => setClearInput(e.target.value.toUpperCase())}
+                    placeholder="Type CONFIRM"
+                    className="border-2 border-gray-300 rounded-lg px-3 py-2 text-sm font-mono text-center focus:outline-none focus:border-red-500 tracking-widest"
+                    autoFocus
+                    onKeyDown={e => { if (e.key === 'Enter') handleClearConfirm(); }}
+                  />
+                  <div className="flex justify-end gap-3">
+                    <button onClick={closeClearModal} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2">
+                      Cancel
+                    </button>
+                    <button
+                      onClick={handleClearConfirm}
+                      disabled={clearInput !== 'CONFIRM' || clearing}
+                      className="bg-red-600 hover:bg-red-700 disabled:opacity-30 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+                    >
+                      {clearing ? 'Clearing...' : 'Clear Schedule'}
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </main>
     </div>
   );
