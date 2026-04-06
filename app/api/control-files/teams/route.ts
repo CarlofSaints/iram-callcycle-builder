@@ -51,11 +51,16 @@ export async function POST(req: NextRequest) {
     const colTeamName = findHeader(headers, ['team name', 'teamname']);
     const colTeamLeader = findHeader(headers, ['team leader', 'teamleader']);
     const colTeamLeaderId = findHeader(headers, ['team leader id', 'teamleaderid', 'leader id']);
-    const colMemberEmail = findHeader(headers, ['member email', 'memberemail', 'user email', 'useremail', 'email']);
-    const colMemberId = findHeader(headers, ['member id', 'memberid', 'user id', 'userid']);
+    const colMemberEmail = findHeader(headers, ['member email', 'memberemail', 'team member email', 'teammemberemail', 'user email', 'useremail', 'email']);
+    const colMemberId = findHeader(headers, ['member id', 'memberid', 'team member id', 'teammemberid', 'user id', 'userid']);
 
-    if (colTeamName < 0 || colMemberEmail < 0) {
-      return NextResponse.json({ error: 'Required columns not found: Team Name, Member Email' }, { status: 400 });
+    const missing: string[] = [];
+    if (colTeamName < 0) missing.push('Team Name');
+    if (colMemberEmail < 0) missing.push('Member Email');
+    if (missing.length > 0) {
+      return NextResponse.json({
+        error: `Required column(s) not found: ${missing.join(', ')}. Found headers: ${headers.join(', ')}`,
+      }, { status: 400 });
     }
 
     const teams: TeamControlEntry[] = [];

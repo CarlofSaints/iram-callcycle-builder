@@ -89,12 +89,55 @@ export default function ControlFilesPage() {
     if (!storeFile || !session) return;
     setStoreUploading(true);
     try {
-      const formData = new FormData();
-      formData.append('file', storeFile);
-      formData.append('userName', `${session.name} ${session.surname}`);
-      formData.append('userEmail', session.email);
+      // Parse Excel on client side to avoid Vercel 4.5MB body limit
+      const XLSX = await import('xlsx');
+      const buffer = await storeFile.arrayBuffer();
+      const wb = XLSX.read(buffer, { type: 'array' });
+      const sheetName = wb.SheetNames[0];
+      if (!sheetName) { notify('No sheets found in file', 'error'); return; }
 
-      const res = await fetch('/api/control-files/stores', { method: 'POST', body: formData });
+      const sheet = wb.Sheets[sheetName];
+      const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      if (rows.length < 2) { notify('File has no data rows', 'error'); return; }
+
+      const headers = rows[0].map(String);
+      // Filter to rows with a store code to reduce payload size
+      const storeCodeIdx = headers.findIndex(h =>
+        ['store code', 'storecode', 'store id', 'storeid'].includes(h.toLowerCase().trim())
+      );
+      const dataRows = rows.slice(1).filter(r =>
+        storeCodeIdx >= 0 && String(r[storeCodeIdx] || '').trim() !== ''
+      ).map(r => r.map(c => String(c ?? '')));
+
+      const payload = {
+        headers,
+        rows: dataRows,
+        userName: `${session.name} ${session.surname}`,
+        userEmail: session.email,
+      };
+
+      const jsonStr = JSON.stringify(payload);
+      let res: Response;
+
+      if (jsonStr.length > 3.5 * 1024 * 1024 && typeof CompressionStream !== 'undefined') {
+        // Compress with gzip for large payloads
+        const blob = new Blob([jsonStr]);
+        const cs = new CompressionStream('gzip');
+        const compressedStream = blob.stream().pipeThrough(cs);
+        const compressedBlob = await new Response(compressedStream).blob();
+        res = await fetch('/api/control-files/stores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/gzip' },
+          body: compressedBlob,
+        });
+      } else {
+        res = await fetch('/api/control-files/stores', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: jsonStr,
+        });
+      }
+
       if (!res.ok) {
         let msg = `Upload failed (${res.status})`;
         try { const d = await res.json(); msg = d.error || d.detail || msg; } catch { /* non-JSON response */ }

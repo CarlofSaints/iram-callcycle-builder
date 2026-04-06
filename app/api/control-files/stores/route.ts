@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import * as XLSX from 'xlsx';
 import ExcelJS from 'exceljs';
+import zlib from 'zlib';
 import { StoreControlEntry } from '@/lib/types';
 import { loadStoreControl, saveStoreControl } from '@/lib/storeControlData';
 import { addActivity } from '@/lib/activityLogData';
@@ -17,74 +18,113 @@ function findHeader(headers: string[], candidates: string[]): number {
   return -1;
 }
 
+function processStoreRows(headers: string[], dataRows: string[][]): { stores: StoreControlEntry[]; error?: string } {
+  const colCountry = findHeader(headers, ['country']);
+  const colProvince = findHeader(headers, ['province']);
+  const colChannel = findHeader(headers, ['channel']);
+  const colStoreName = findHeader(headers, ['store name', 'storename']);
+  const colStoreCode = findHeader(headers, ['store code', 'storecode', 'store id', 'storeid']);
+  const colActive = findHeader(headers, ['active']);
+  const colLong = findHeader(headers, ['longitude', 'long']);
+  const colLat = findHeader(headers, ['latitude', 'lat']);
+  const colLocStatus = findHeader(headers, ['location status', 'locationstatus']);
+  const colIgnoreLoc = findHeader(headers, ['ignore location data', 'ignorelocationdata']);
+  const colEmail = findHeader(headers, ['email', 'store email']);
+  const colCreatedBy = findHeader(headers, ['created by', 'createdby']);
+  const colUpdatedBy = findHeader(headers, ['updated by', 'updatedby']);
+
+  if (colStoreCode < 0 || colStoreName < 0) {
+    return { stores: [], error: 'Required columns not found: Store Code, Store Name' };
+  }
+
+  const stores: StoreControlEntry[] = [];
+  for (const r of dataRows) {
+    const storeCode = String(r[colStoreCode] || '').trim();
+    if (!storeCode) continue;
+
+    const activeVal = colActive >= 0 ? String(r[colActive] || '').trim().toUpperCase() : 'YES';
+
+    stores.push({
+      country: colCountry >= 0 ? String(r[colCountry] || '').trim() : '',
+      province: colProvince >= 0 ? String(r[colProvince] || '').trim() : '',
+      channel: colChannel >= 0 ? String(r[colChannel] || '').trim() : '',
+      storeName: String(r[colStoreName] || '').trim(),
+      storeCode,
+      active: activeVal === 'YES' || activeVal === 'TRUE' || activeVal === '1',
+      longitude: colLong >= 0 ? String(r[colLong] || '').trim() : '',
+      latitude: colLat >= 0 ? String(r[colLat] || '').trim() : '',
+      locationStatus: colLocStatus >= 0 ? String(r[colLocStatus] || '').trim() : '',
+      ignoreLocationData: colIgnoreLoc >= 0 ? ['YES', 'TRUE', '1'].includes(String(r[colIgnoreLoc] || '').trim().toUpperCase()) : false,
+      email: colEmail >= 0 ? String(r[colEmail] || '').trim() : '',
+      createdBy: colCreatedBy >= 0 ? String(r[colCreatedBy] || '').trim() : '',
+      updatedBy: colUpdatedBy >= 0 ? String(r[colUpdatedBy] || '').trim() : '',
+    });
+  }
+
+  return { stores };
+}
+
 export async function POST(req: NextRequest) {
   try {
-    const formData = await req.formData();
-    const file = formData.get('file') as File | null;
-    const userName = formData.get('userName') as string || 'Unknown';
-    const userEmail = formData.get('userEmail') as string || '';
+    const contentType = req.headers.get('content-type') || '';
 
-    if (!file) {
-      return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+    let headers: string[];
+    let dataRows: string[][];
+    let userName: string;
+    let userEmail: string;
+
+    if (contentType.includes('application/json') || contentType.includes('application/gzip')) {
+      // Client-side parsed data (JSON or gzipped JSON)
+      let body: { headers: string[]; rows: string[][]; userName?: string; userEmail?: string };
+
+      if (contentType.includes('application/gzip')) {
+        const compressed = Buffer.from(await req.arrayBuffer());
+        const decompressed = zlib.gunzipSync(compressed);
+        body = JSON.parse(decompressed.toString());
+      } else {
+        body = await req.json();
+      }
+
+      if (!body.headers || !body.rows) {
+        return NextResponse.json({ error: 'Invalid JSON: missing headers or rows' }, { status: 400 });
+      }
+
+      headers = body.headers.map(String);
+      dataRows = body.rows;
+      userName = body.userName || 'Unknown';
+      userEmail = body.userEmail || '';
+    } else {
+      // Legacy: FormData with Excel file
+      const formData = await req.formData();
+      const file = formData.get('file') as File | null;
+      userName = formData.get('userName') as string || 'Unknown';
+      userEmail = formData.get('userEmail') as string || '';
+
+      if (!file) {
+        return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const wb = XLSX.read(buffer, { type: 'buffer' });
+      const sheetName = wb.SheetNames[0];
+      if (!sheetName) {
+        return NextResponse.json({ error: 'No sheets found in file' }, { status: 400 });
+      }
+
+      const sheet = wb.Sheets[sheetName];
+      const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
+      if (rows.length < 2) {
+        return NextResponse.json({ error: 'File has no data rows' }, { status: 400 });
+      }
+
+      headers = rows[0].map(String);
+      dataRows = rows.slice(1);
     }
 
-    const buffer = Buffer.from(await file.arrayBuffer());
-    const wb = XLSX.read(buffer, { type: 'buffer' });
-    const sheetName = wb.SheetNames[0];
-    if (!sheetName) {
-      return NextResponse.json({ error: 'No sheets found in file' }, { status: 400 });
-    }
+    const { stores, error } = processStoreRows(headers, dataRows);
 
-    const sheet = wb.Sheets[sheetName];
-    const rows: string[][] = XLSX.utils.sheet_to_json(sheet, { header: 1, defval: '' });
-    if (rows.length < 2) {
-      return NextResponse.json({ error: 'File has no data rows' }, { status: 400 });
-    }
-
-    const headers = rows[0].map(String);
-
-    // Map columns (case-insensitive)
-    const colCountry = findHeader(headers, ['country']);
-    const colProvince = findHeader(headers, ['province']);
-    const colChannel = findHeader(headers, ['channel']);
-    const colStoreName = findHeader(headers, ['store name', 'storename']);
-    const colStoreCode = findHeader(headers, ['store code', 'storecode', 'store id', 'storeid']);
-    const colActive = findHeader(headers, ['active']);
-    const colLong = findHeader(headers, ['longitude', 'long']);
-    const colLat = findHeader(headers, ['latitude', 'lat']);
-    const colLocStatus = findHeader(headers, ['location status', 'locationstatus']);
-    const colIgnoreLoc = findHeader(headers, ['ignore location data', 'ignorelocationdata']);
-    const colEmail = findHeader(headers, ['email', 'store email']);
-    const colCreatedBy = findHeader(headers, ['created by', 'createdby']);
-    const colUpdatedBy = findHeader(headers, ['updated by', 'updatedby']);
-
-    if (colStoreCode < 0 || colStoreName < 0) {
-      return NextResponse.json({ error: 'Required columns not found: Store Code, Store Name' }, { status: 400 });
-    }
-
-    const stores: StoreControlEntry[] = [];
-    for (let i = 1; i < rows.length; i++) {
-      const r = rows[i];
-      const storeCode = String(r[colStoreCode] || '').trim();
-      if (!storeCode) continue;
-
-      const activeVal = colActive >= 0 ? String(r[colActive] || '').trim().toUpperCase() : 'YES';
-
-      stores.push({
-        country: colCountry >= 0 ? String(r[colCountry] || '').trim() : '',
-        province: colProvince >= 0 ? String(r[colProvince] || '').trim() : '',
-        channel: colChannel >= 0 ? String(r[colChannel] || '').trim() : '',
-        storeName: String(r[colStoreName] || '').trim(),
-        storeCode,
-        active: activeVal === 'YES' || activeVal === 'TRUE' || activeVal === '1',
-        longitude: colLong >= 0 ? String(r[colLong] || '').trim() : '',
-        latitude: colLat >= 0 ? String(r[colLat] || '').trim() : '',
-        locationStatus: colLocStatus >= 0 ? String(r[colLocStatus] || '').trim() : '',
-        ignoreLocationData: colIgnoreLoc >= 0 ? ['YES', 'TRUE', '1'].includes(String(r[colIgnoreLoc] || '').trim().toUpperCase()) : false,
-        email: colEmail >= 0 ? String(r[colEmail] || '').trim() : '',
-        createdBy: colCreatedBy >= 0 ? String(r[colCreatedBy] || '').trim() : '',
-        updatedBy: colUpdatedBy >= 0 ? String(r[colUpdatedBy] || '').trim() : '',
-      });
+    if (error) {
+      return NextResponse.json({ error }, { status: 400 });
     }
 
     if (stores.length === 0) {
