@@ -6,13 +6,16 @@ import { loadTeamControl } from './teamControlData';
 
 const FILE = path.join(process.cwd(), 'data', 'references.json');
 const TMP_FILE = '/tmp/iram_references.json';
-let _cache: ReferenceData | null = null;
 
 const EMPTY: ReferenceData = { stores: [], users: [], teams: [] };
 
+/**
+ * Always rebuild from the live control-file caches so that a re-upload of
+ * the store/team control file is immediately visible to the next upload.
+ * loadStoreControl() / loadTeamControl() already have their own fast _cache,
+ * so the bridge rebuild here is trivial.
+ */
 export function loadReferences(): ReferenceData {
-  if (_cache !== null) return _cache;
-
   // --- Bridge: build from control files if available ---
   const storeControl = loadStoreControl();
   const teamControl = loadTeamControl();
@@ -59,7 +62,6 @@ export function loadReferences(): ReferenceData {
       }
     }
 
-    _cache = ref;
     return ref;
   }
 
@@ -69,8 +71,7 @@ export function loadReferences(): ReferenceData {
   if (process.env.VERCEL) {
     try {
       if (fs.existsSync(TMP_FILE)) {
-        _cache = JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
-        return _cache!;
+        return JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
       }
     } catch {}
   }
@@ -78,23 +79,21 @@ export function loadReferences(): ReferenceData {
   const env = process.env.IRAM_CC_REFERENCES_JSON;
   if (process.env.VERCEL && env) {
     try {
-      _cache = JSON.parse(env);
+      const parsed = JSON.parse(env);
       try { fs.writeFileSync(TMP_FILE, env); } catch {}
-      return _cache!;
+      return parsed;
     } catch {}
   }
 
   if (fs.existsSync(FILE)) {
     try {
-      _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-      return _cache!;
+      return JSON.parse(fs.readFileSync(FILE, 'utf-8'));
     } catch {}
   }
 
   if (env) {
     try {
-      _cache = JSON.parse(env);
-      return _cache!;
+      return JSON.parse(env);
     } catch {}
   }
 
@@ -102,7 +101,6 @@ export function loadReferences(): ReferenceData {
 }
 
 export async function saveReferences(data: ReferenceData) {
-  _cache = data;
   const json = JSON.stringify(data, null, 2);
 
   // Vercel: write to /tmp
