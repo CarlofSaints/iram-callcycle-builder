@@ -55,6 +55,9 @@ export default function Header({ session, onLogout }: HeaderProps) {
           <Link href="/schedule" className={navClass('/schedule')}>
             Schedule
           </Link>
+          <Link href="/5fr" className={navClass('/5fr')}>
+            5FR
+          </Link>
           {session.isAdmin && (
             <>
               <Link href="/admin/users" className={navClass('/admin/users')}>
