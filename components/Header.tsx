@@ -55,9 +55,6 @@ export default function Header({ session, onLogout }: HeaderProps) {
           <Link href="/schedule" className={navClass('/schedule')}>
             Schedule
           </Link>
-          <Link href="/5fr" className={navClass('/5fr')}>
-            5FR
-          </Link>
           {session.isAdmin && (
             <>
               <Link href="/admin/users" className={navClass('/admin/users')}>
@@ -73,8 +70,11 @@ export default function Header({ session, onLogout }: HeaderProps) {
           )}
         </nav>
 
-        {/* Right: User + sign out */}
+        {/* Right: 5FR + User + sign out */}
         <div className="flex items-center gap-3 shrink-0">
+          <Link href="/5fr" className={navClass('/5fr')}>
+            5FR
+          </Link>
           <div className="hidden sm:block text-right">
             <p className="text-sm font-medium text-gray-800 leading-tight">{session.name} {session.surname}</p>
             <p className="text-xs text-gray-400 leading-tight">{session.email}</p>
