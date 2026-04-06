@@ -80,7 +80,9 @@ export async function mergeIntoSchedule(
     );
 
     const channel = storeLookup.get(entry.storeId.toUpperCase()) || '';
-    if (!channel && entry.storeId) {
+    if (!entry.storeId) {
+      warnings.push(`No site ID found for "${entry.storeName}" — added with blank site ID`);
+    } else if (!channel) {
       warnings.push(`Store ${entry.storeId} (${entry.storeName}) not found in reference data`);
     }
 

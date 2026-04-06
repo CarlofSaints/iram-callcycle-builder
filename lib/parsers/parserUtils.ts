@@ -78,7 +78,7 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
     }
   }
 
-  // 2. Split on last " - " and check if right side is a valid code
+  // 2. Split on last " - " (spaced dash) and check if right side is a valid code
   const dashIdx = trimmed.lastIndexOf(' - ');
   if (dashIdx > 0) {
     const rightSide = trimmed.substring(dashIdx + 3).trim();
@@ -89,10 +89,23 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
       };
     }
     // Right side is NOT a code (e.g. "PICK N PAY - CORPORATE MATLOSANA MALL GC86")
-    // Fall through to check for trailing code
+    // Fall through to check other patterns
   }
 
-  // 3. Check for trailing code as last word (e.g. "...MATLOSANA MALL GC86")
+  // 3. Split on last hyphen (no spaces around it) — e.g. "BWH ERASMUS PARK-B206" → code "B206"
+  //    Must come BEFORE trailing-word check to avoid "PARK-B206" being treated as a single code.
+  const lastHyphen = trimmed.lastIndexOf('-');
+  if (lastHyphen > 0 && (dashIdx < 0 || lastHyphen !== dashIdx + 1)) {
+    const rightOfHyphen = trimmed.substring(lastHyphen + 1).trim();
+    if (rightOfHyphen && !rightOfHyphen.includes(' ') && looksLikeStoreCode(rightOfHyphen)) {
+      return {
+        storeName: trimmed.substring(0, lastHyphen).trim(),
+        storeCode: rightOfHyphen,
+      };
+    }
+  }
+
+  // 4. Check for trailing code as last word (e.g. "...MATLOSANA MALL GC86")
   const lastSpaceIdx = trimmed.lastIndexOf(' ');
   if (lastSpaceIdx > 0) {
     const lastWord = trimmed.substring(lastSpaceIdx + 1).trim();
@@ -102,12 +115,6 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
         storeCode: lastWord,
       };
     }
-  }
-
-  // 4. Try "NAME-CODE" pattern (no spaces around hyphen, e.g. "BWH HELDERBERG-B43")
-  const hyphenMatch = trimmed.match(/^(.+?)-([A-Za-z][A-Za-z0-9-]*)$/);
-  if (hyphenMatch && looksLikeStoreCode(hyphenMatch[2])) {
-    return { storeName: hyphenMatch[1].trim(), storeCode: hyphenMatch[2].trim() };
   }
 
   // 5. No code found
