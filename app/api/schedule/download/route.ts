@@ -13,6 +13,12 @@ function daysToShort(days: string[]): string {
   return days.map(d => map[d] || d).join(',');
 }
 
+function parseCycleWeeks(cycle: string): number[] {
+  if (!cycle) return [];
+  const nums = cycle.match(/\d+/g);
+  return nums ? nums.map(Number).filter(n => n >= 1 && n <= 6).sort((a, b) => a - b) : [];
+}
+
 export async function GET(req: Request) {
   const url = new URL(req.url);
   const userName = url.searchParams.get('userName') || 'Unknown';
@@ -38,32 +44,46 @@ export async function GET(req: Request) {
     teamLookup.set(t.teamName, t);
   }
 
-  // Pre-compute cycle per user:
-  // Cycle 1 = same schedule every week (only one block in raw file)
-  // Cycle 2 = two patterns: Week 1&3 differs from Week 2&4
-  // Cycle 4 = four different week patterns (future)
+  // Pre-compute cycle per user: max week number across all entries
   const userCycleMap = new Map<string, number>();
-  const userCyclePatterns = new Map<string, Set<string>>();
   for (const row of schedule) {
     const key = row.userEmail.toLowerCase();
-    if (!userCyclePatterns.has(key)) userCyclePatterns.set(key, new Set());
-    userCyclePatterns.get(key)!.add(row.cycle);
-  }
-  for (const [email, patterns] of userCyclePatterns) {
-    const has13 = patterns.has('Week 1&3');
-    const has24 = patterns.has('Week 2&4');
-    if (has13 && has24) {
-      userCycleMap.set(email, 2);  // Two different patterns
-    } else {
-      userCycleMap.set(email, 1);  // Same schedule every week
-    }
+    const weeks = parseCycleWeeks(row.cycle);
+    const maxWeek = weeks.length > 0 ? Math.max(...weeks) : 1;
+    const current = userCycleMap.get(key) || 0;
+    if (maxWeek > current) userCycleMap.set(key, maxWeek);
   }
 
   const workbook = new ExcelJS.Workbook();
 
-  // Header styling
-  const headerFill: ExcelJS.FillPattern = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF7CC042' } };
+  // Header styling — colour groups for visual relevance
   const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
+  const COL_BLUE   = 'FF4472C4';  // User info
+  const COL_DGREEN = 'FF548235';  // Cycle admin
+  const COL_ORANGE = 'FFED7D31';  // Action
+  const COL_NAVY   = 'FF2F5496';  // Store info
+  const COL_GREY   = 'FF828282';  // Cycle number
+  const COL_GREEN  = 'FF7CC042';  // Weeks (iRam brand)
+
+  // Schedule sheet: column-index → colour (1-based)
+  const scheduleColors: Record<number, string> = {
+    1: COL_BLUE, 2: COL_BLUE, 3: COL_BLUE, 4: COL_BLUE,
+    5: COL_BLUE, 6: COL_BLUE, 7: COL_BLUE,
+    8: COL_DGREEN, 9: COL_DGREEN, 10: COL_DGREEN, 11: COL_DGREEN,
+    12: COL_ORANGE,
+    13: COL_NAVY, 14: COL_NAVY, 15: COL_NAVY,
+    16: COL_GREY,
+    17: COL_GREEN, 18: COL_GREEN, 19: COL_GREEN,
+    20: COL_GREEN, 21: COL_GREEN, 22: COL_GREEN,
+  };
+
+  function applyHeaderColors(row: ExcelJS.Row, colorMap?: Record<number, string>) {
+    row.eachCell((cell, colNumber) => {
+      const argb = colorMap ? (colorMap[colNumber] || COL_GREEN) : COL_GREEN;
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
+      cell.font = headerFont;
+    });
+  }
 
   // === Sheet 1: Schedule (Perigee format) ===
   const scheduleSheet = workbook.addWorksheet('Schedule');
@@ -88,12 +108,11 @@ export async function GET(req: Request) {
     { header: 'WEEK2', key: 'week2', width: 15 },
     { header: 'WEEK3', key: 'week3', width: 15 },
     { header: 'WEEK4', key: 'week4', width: 15 },
+    { header: 'WEEK5', key: 'week5', width: 15 },
+    { header: 'WEEK6', key: 'week6', width: 15 },
   ];
 
-  scheduleSheet.getRow(1).eachCell(cell => {
-    cell.fill = headerFill;
-    cell.font = headerFont;
-  });
+  applyHeaderColors(scheduleSheet.getRow(1), scheduleColors);
 
   const actionColors: Record<string, string> = {
     ADD: 'FFd1fae5',
@@ -102,38 +121,34 @@ export async function GET(req: Request) {
     LIVE: 'FFf3f4f6',
   };
 
+  // Merge rows with same user+store into a single export row
+  const mergedMap = new Map<string, {
+    row: typeof schedule[0];
+    weekDays: Map<number, string>; // week number → short days
+  }>();
+
   for (const row of schedule) {
-    const refUser = userLookup.get(row.userEmail.toLowerCase());
+    const key = `${row.userEmail.toLowerCase()}|${row.storeId.toUpperCase()}`;
+    const weekNums = parseCycleWeeks(row.cycle);
     const daysShort = daysToShort(row.days);
-    const userCycle = userCycleMap.get(row.userEmail.toLowerCase()) || 1;
 
-    // Convert cycle + days to WEEK1-WEEK4 columns
-    let week1 = '', week2 = '', week3 = '', week4 = '';
-
-    if (userCycle === 1) {
-      // Cycle 1: Same schedule every week — all weeks get the same days
-      week1 = daysShort;
-      week2 = daysShort;
-      week3 = daysShort;
-      week4 = daysShort;
-    } else {
-      // Cycle 2: Week 1&3 differ from Week 2&4
-      const is13 = row.cycle.includes('1') && row.cycle.includes('3');
-      const is24 = row.cycle.includes('2') && row.cycle.includes('4');
-      if (is13) {
-        week1 = daysShort;
-        week3 = daysShort;
-      } else if (is24) {
-        week2 = daysShort;
-        week4 = daysShort;
-      } else {
-        // Fallback: populate all weeks
-        week1 = daysShort;
-        week2 = daysShort;
-        week3 = daysShort;
-        week4 = daysShort;
-      }
+    if (!mergedMap.has(key)) {
+      mergedMap.set(key, { row, weekDays: new Map() });
     }
+
+    const entry = mergedMap.get(key)!;
+    for (const w of weekNums) {
+      entry.weekDays.set(w, daysShort);
+    }
+    // Keep latest action/upload info
+    if (new Date(row.uploadedAt) > new Date(entry.row.uploadedAt)) {
+      entry.row = { ...row };
+    }
+  }
+
+  for (const [, { row, weekDays }] of mergedMap) {
+    const refUser = userLookup.get(row.userEmail.toLowerCase());
+    const userCycle = userCycleMap.get(row.userEmail.toLowerCase()) || 1;
 
     const r = scheduleSheet.addRow({
       userId: refUser?.userId || '',
@@ -152,10 +167,12 @@ export async function GET(req: Request) {
       storeName: row.storeName,
       channel: row.channel,
       cycle: String(userCycle),
-      week1,
-      week2,
-      week3,
-      week4,
+      week1: weekDays.get(1) || '',
+      week2: weekDays.get(2) || '',
+      week3: weekDays.get(3) || '',
+      week4: weekDays.get(4) || '',
+      week5: weekDays.get(5) || '',
+      week6: weekDays.get(6) || '',
     });
 
     const color = actionColors[row.action] || 'FFf3f4f6';
@@ -185,10 +202,7 @@ export async function GET(req: Request) {
     { header: 'CYCLE START DATE', key: 'cycleStartDate', width: 15 },
     { header: 'CYCLE END DATE', key: 'cycleEndDate', width: 15 },
   ];
-  teamsUserSheet.getRow(1).eachCell(cell => {
-    cell.fill = headerFill;
-    cell.font = headerFont;
-  });
+  applyHeaderColors(teamsUserSheet.getRow(1));
 
   // Add unique users from schedule
   const seenEmails = new Set<string>();
@@ -229,10 +243,7 @@ export async function GET(req: Request) {
     { header: 'STORE NAME', key: 'storeName', width: 35 },
     { header: 'CHANNEL', key: 'channel', width: 20 },
   ];
-  storeSheet.getRow(1).eachCell(cell => {
-    cell.fill = headerFill;
-    cell.font = headerFont;
-  });
+  applyHeaderColors(storeSheet.getRow(1));
   for (const s of references.stores) {
     storeSheet.addRow({
       storeId: s.storeCode,
@@ -247,10 +258,7 @@ export async function GET(req: Request) {
     { header: 'ACTION', key: 'action', width: 15 },
     { header: 'CYCLE STATUS', key: 'cycleStatus', width: 15 },
   ];
-  dataSheet.getRow(1).eachCell(cell => {
-    cell.fill = headerFill;
-    cell.font = headerFont;
-  });
+  applyHeaderColors(dataSheet.getRow(1));
   ['ADD', 'UPDATE', 'REMOVE', 'LIVE', 'SET_END_TODAY'].forEach(a =>
     dataSheet.addRow({ action: a, cycleStatus: '' })
   );

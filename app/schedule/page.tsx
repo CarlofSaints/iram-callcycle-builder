@@ -26,8 +26,20 @@ const ACTION_STYLES: Record<string, string> = {
 };
 
 const ALL_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
-const CYCLE_OPTIONS = ['Week 1&3', 'Week 2&4'];
+const ALL_WEEKS = [1, 2, 3, 4, 5, 6];
 const ACTION_OPTIONS = ['ADD', 'UPDATE', 'REMOVE', 'LIVE'];
+
+function parseCycleWeeks(cycle: string): number[] {
+  if (!cycle) return [];
+  const nums = cycle.match(/\d+/g);
+  return nums ? nums.map(Number).filter(n => n >= 1 && n <= 6).sort((a, b) => a - b) : [];
+}
+
+function formatCycle(cycle: string): string {
+  const weeks = parseCycleWeeks(cycle);
+  if (weeks.length === 0) return '—';
+  return `Week ${weeks.join(', ')}`;
+}
 
 export default function SchedulePage() {
   const { session, loading, logout } = useAuth();
@@ -137,6 +149,15 @@ export default function SchedulePage() {
       ? editRow.days.filter(d => d !== day)
       : [...editRow.days, day];
     setEditRow({ ...editRow, days });
+  }
+
+  function toggleWeek(week: number) {
+    if (!editRow) return;
+    const current = parseCycleWeeks(editRow.cycle);
+    const updated = current.includes(week)
+      ? current.filter(w => w !== week)
+      : [...current, week].sort((a, b) => a - b);
+    setEditRow({ ...editRow, cycle: updated.join(',') });
   }
 
   async function handleDownload() {
@@ -293,15 +314,21 @@ export default function SchedulePage() {
                             className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
                           />
                         </td>
-                        {/* Cycle dropdown */}
+                        {/* Cycle checkboxes */}
                         <td className="px-4 py-2">
-                          <select
-                            value={editRow.cycle}
-                            onChange={e => setEditRow({ ...editRow, cycle: e.target.value })}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
-                          >
-                            {CYCLE_OPTIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                          </select>
+                          <div className="flex flex-wrap gap-1">
+                            {ALL_WEEKS.map(week => (
+                              <label key={week} className="flex items-center gap-0.5 text-xs cursor-pointer">
+                                <input
+                                  type="checkbox"
+                                  checked={parseCycleWeeks(editRow.cycle).includes(week)}
+                                  onChange={() => toggleWeek(week)}
+                                  className="accent-[#7CC042] w-3.5 h-3.5"
+                                />
+                                <span>W{week}</span>
+                              </label>
+                            ))}
+                          </div>
                         </td>
                         {/* Day checkboxes */}
                         <td className="px-4 py-2">
@@ -362,7 +389,7 @@ export default function SchedulePage() {
                       <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{row.storeId}</td>
                       <td className="px-4 py-2.5 text-gray-700">{row.storeName}</td>
                       <td className="px-4 py-2.5 text-gray-500">{row.channel || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-500">{row.cycle}</td>
+                      <td className="px-4 py-2.5 text-gray-500">{formatCycle(row.cycle)}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{row.days.join(', ')}</td>
                       <td className="px-4 py-2.5 text-center">
                         <div className="flex items-center justify-center gap-1">
