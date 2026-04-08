@@ -10,6 +10,11 @@ export interface ScheduleRow {
   action: 'ADD' | 'UPDATE' | 'REMOVE' | 'LIVE';
   uploadedAt: string;
   uploadedBy: string;
+  /**
+   * Computed server-side on read by joining userEmail against the team control.
+   * Never persisted to disk — always reflects the latest team control upload.
+   */
+  teamLeader?: string;
 }
 
 export interface ParsedEntry {

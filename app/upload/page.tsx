@@ -4,10 +4,13 @@ import { useAuth } from '@/lib/useAuth';
 import Header from '@/components/Header';
 import { useState, useRef } from 'react';
 
+type ParseMode = 'team-leader' | 'user';
+
 export default function UploadPage() {
   const { session, loading, logout } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [ccEmail, setCcEmail] = useState('');
+  const [parseMode, setParseMode] = useState<ParseMode>('team-leader');
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{
     ok?: boolean;
@@ -31,6 +34,7 @@ export default function UploadPage() {
       formData.append('file', file);
       formData.append('userName', `${session.name} ${session.surname}`);
       formData.append('userEmail', session.email);
+      formData.append('parseMode', parseMode);
       if (ccEmail) formData.append('ccEmail', ccEmail);
 
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
@@ -62,6 +66,42 @@ export default function UploadPage() {
           <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
             <p className="font-semibold">Important:</p>
             <p className="mt-1">Sheets that are <strong>not</strong> labelled with an email address (e.g. &quot;ntethelelo@iram.co.za&quot;) will only be processed if control files have been uploaded and the person&apos;s name can be matched. If the sheet name is a person&apos;s name, make sure control files are uploaded first via <strong>Admin &gt; Control Files</strong>, or rename the sheet to the user&apos;s Perigee email address.</p>
+          </div>
+
+          {/* Sheet format toggle */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Sheet Format</label>
+            <div className="flex flex-col gap-2">
+              <label className={`flex items-start gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${parseMode === 'team-leader' ? 'border-[#7CC042] bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="parseMode"
+                  value="team-leader"
+                  checked={parseMode === 'team-leader'}
+                  onChange={() => setParseMode('team-leader')}
+                  className="mt-0.5 accent-[#7CC042]"
+                />
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold text-gray-900">Team Leader Sheets <span className="text-[11px] font-normal text-[#7CC042]">(recommended)</span></span>
+                  <span className="text-xs text-gray-500 mt-0.5">Sheet name = Team Leader email. Each subordinate has an <code className="bg-gray-100 px-1 rounded">Email:</code> + <code className="bg-gray-100 px-1 rounded">Week:</code> marker above their cycle table.</span>
+                </span>
+              </label>
+
+              <label className={`flex items-start gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${parseMode === 'user' ? 'border-[#7CC042] bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="parseMode"
+                  value="user"
+                  checked={parseMode === 'user'}
+                  onChange={() => setParseMode('user')}
+                  className="mt-0.5 accent-[#7CC042]"
+                />
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold text-gray-900">User Sheets</span>
+                  <span className="text-xs text-gray-500 mt-0.5">Sheet name = user&apos;s Perigee email. One user per sheet. Only <code className="bg-gray-100 px-1 rounded">Week:</code> marker needed.</span>
+                </span>
+              </label>
+            </div>
           </div>
 
           <div

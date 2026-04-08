@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { parseCallCycleFile } from '@/lib/parsers';
+import { parseCallCycleFile, ParseMode } from '@/lib/parsers';
 import { loadReferences } from '@/lib/referenceData';
 import { loadTeamControl } from '@/lib/teamControlData';
 import { mergeIntoSchedule } from '@/lib/scheduleData';
@@ -7,6 +7,8 @@ import { addActivity } from '@/lib/activityLogData';
 import { sendUploadNotification } from '@/lib/email';
 import { loadUsers } from '@/lib/userData';
 import { randomUUID } from 'crypto';
+
+const VALID_PARSE_MODES: ParseMode[] = ['team-leader', 'user', 'auto'];
 
 export async function POST(req: NextRequest) {
   try {
@@ -16,17 +18,23 @@ export async function POST(req: NextRequest) {
     const userEmail = formData.get('userEmail') as string || '';
     const ccEmail = formData.get('ccEmail') as string || '';
 
+    // Enforce Carl's hard rule: default to team-leader if missing or invalid.
+    const rawParseMode = (formData.get('parseMode') as string | null) || '';
+    const parseMode: ParseMode = VALID_PARSE_MODES.includes(rawParseMode as ParseMode)
+      ? (rawParseMode as ParseMode)
+      : 'team-leader';
+
     if (!file) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const references = loadReferences();
+    const references = await loadReferences();
     const teamControlData = loadTeamControl();
     const teamControlEntries = teamControlData?.teams;
 
     // Parse the file
-    const { format, entries, warnings } = parseCallCycleFile(buffer, references, teamControlEntries);
+    const { format, entries, warnings } = parseCallCycleFile(buffer, references, teamControlEntries, parseMode);
 
     // Warn if reference data is empty and format requires it
     const needsRefData = ['josh-standard', 'josh-alt', 'email-sheet', 'simple-name'].includes(format);

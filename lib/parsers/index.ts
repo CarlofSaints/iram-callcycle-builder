@@ -14,16 +14,39 @@ export interface ParseResult {
   warnings: string[];
 }
 
+export type ParseMode = 'team-leader' | 'user' | 'auto';
+
 export function parseCallCycleFile(
   buffer: Buffer,
   references: ReferenceData,
   teamControl?: TeamControlEntry[],
+  parseMode: ParseMode = 'auto',
 ): ParseResult {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
-  const format = detectFormat(workbook);
 
   let entries: ParsedEntry[] = [];
   let warnings: string[] = [];
+  let format: FileFormat;
+
+  // Explicit modes skip detectFormat entirely.
+  if (parseMode === 'team-leader') {
+    format = 'marker';
+    const result = parseMarkerFormat(workbook, references);
+    entries = result.entries;
+    warnings = result.warnings;
+    return { format, entries, warnings };
+  }
+
+  if (parseMode === 'user') {
+    format = 'email-sheet';
+    const result = parseEmailSheet(workbook, references, teamControl);
+    entries = result.entries;
+    warnings = result.warnings;
+    return { format, entries, warnings };
+  }
+
+  // parseMode === 'auto' — legacy auto-detect path (backward-compat safety net).
+  format = detectFormat(workbook);
 
   switch (format) {
     case 'marker': {

@@ -137,7 +137,7 @@ export async function POST(req: NextRequest) {
     // Merge or replace
     let finalStores: StoreControlEntry[];
     if (mode === 'merge') {
-      const existing = loadStoreControl();
+      const existing = await loadStoreControl();
       if (existing && existing.stores.length > 0) {
         const storeMap = new Map<string, StoreControlEntry>();
         for (const s of existing.stores) {
@@ -186,7 +186,7 @@ export async function GET(req: Request) {
   const url = new URL(req.url);
   const status = url.searchParams.get('status');
 
-  const data = loadStoreControl();
+  const data = await loadStoreControl();
 
   if (status === 'true') {
     if (!data) {

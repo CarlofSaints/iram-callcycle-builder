@@ -1,13 +1,46 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadSchedule, updateScheduleRow, deleteScheduleRow, clearSchedule } from '@/lib/scheduleData';
+import { loadTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
 import { ScheduleRow } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * Build memberEmail → teamLeaderEmail map from the latest team control data.
+ * Used to decorate schedule rows server-side — never persisted.
+ */
+function buildTeamLeaderLookup(): Map<string, string> {
+  const lookup = new Map<string, string>();
+  const teamControl = loadTeamControl();
+  if (!teamControl) return lookup;
+  for (const t of teamControl.teams) {
+    if (t.memberEmail && t.teamLeaderEmail) {
+      lookup.set(t.memberEmail.toLowerCase(), t.teamLeaderEmail);
+    }
+  }
+  return lookup;
+}
+
+function decorateWithTeamLeader(rows: ScheduleRow[], lookup: Map<string, string>): ScheduleRow[] {
+  return rows.map(row => ({
+    ...row,
+    teamLeader: lookup.get(row.userEmail.toLowerCase()) ?? '',
+  }));
+}
+
+/** Strip teamLeader from an inbound client payload so it's never written to disk. */
+function stripTeamLeader(row: ScheduleRow): ScheduleRow {
+  const { teamLeader: _tl, ...rest } = row;
+  void _tl;
+  return rest as ScheduleRow;
+}
+
 export async function GET() {
   const schedule = loadSchedule();
-  return NextResponse.json(schedule, {
+  const lookup = buildTeamLeaderLookup();
+  const decorated = decorateWithTeamLeader(schedule, lookup);
+  return NextResponse.json(decorated, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
   });
 }
@@ -58,7 +91,9 @@ export async function PUT(req: NextRequest) {
       return NextResponse.json({ error: 'Missing index or row' }, { status: 400 });
     }
 
-    const schedule = await updateScheduleRow(index, row);
+    // Strip teamLeader before persisting — it's computed on read, never stored.
+    const cleanRow = stripTeamLeader(row);
+    const schedule = await updateScheduleRow(index, cleanRow);
 
     await addActivity({
       id: crypto.randomUUID(),
@@ -66,10 +101,11 @@ export async function PUT(req: NextRequest) {
       type: 'schedule_edit',
       userName,
       userEmail,
-      detail: `Edited row ${index}: ${row.firstName} ${row.surname} — ${row.storeId} ${row.storeName} (${row.cycle})`,
+      detail: `Edited row ${index}: ${cleanRow.firstName} ${cleanRow.surname} — ${cleanRow.storeId} ${cleanRow.storeName} (${cleanRow.cycle})`,
     });
 
-    return NextResponse.json(schedule);
+    const lookup = buildTeamLeaderLookup();
+    return NextResponse.json(decorateWithTeamLeader(schedule, lookup));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 400 });
@@ -106,7 +142,8 @@ export async function DELETE(req: NextRequest) {
       detail,
     });
 
-    return NextResponse.json(schedule);
+    const lookup = buildTeamLeaderLookup();
+    return NextResponse.json(decorateWithTeamLeader(schedule, lookup));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
     return NextResponse.json({ error: message }, { status: 400 });

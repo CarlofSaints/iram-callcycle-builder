@@ -16,6 +16,8 @@ interface ScheduleRow {
   action: string;
   uploadedAt: string;
   uploadedBy: string;
+  /** Computed server-side from team control — display only, never sent back on PUT. */
+  teamLeader?: string;
 }
 
 const ACTION_STYLES: Record<string, string> = {
@@ -72,7 +74,8 @@ export default function SchedulePage() {
       row.firstName.toLowerCase().includes(filter.toLowerCase()) ||
       row.surname.toLowerCase().includes(filter.toLowerCase()) ||
       row.storeName.toLowerCase().includes(filter.toLowerCase()) ||
-      row.storeId.toLowerCase().includes(filter.toLowerCase());
+      row.storeId.toLowerCase().includes(filter.toLowerCase()) ||
+      (row.teamLeader || '').toLowerCase().includes(filter.toLowerCase());
     const matchAction = !actionFilter || row.action === actionFilter;
     return matchText && matchAction;
   });
@@ -264,7 +267,7 @@ export default function SchedulePage() {
             type="text"
             value={filter}
             onChange={e => setFilter(e.target.value)}
-            placeholder="Filter by name, email, store..."
+            placeholder="Filter by name, email, store, team leader..."
             className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042] min-w-[250px]"
           />
           <select
@@ -296,6 +299,7 @@ export default function SchedulePage() {
                 <tr className="border-b border-gray-100 bg-gray-50">
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Action</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">User</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Team Leader</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Store ID</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Store Name</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Channel</th>
@@ -306,7 +310,7 @@ export default function SchedulePage() {
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">
+                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">
                     {schedule.length === 0 ? 'No schedule data yet. Upload a call cycle file to get started.' : 'No rows match your filter.'}
                   </td></tr>
                 )}
@@ -347,6 +351,10 @@ export default function SchedulePage() {
                             placeholder="Email"
                             className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
                           />
+                        </td>
+                        {/* Team Leader (read-only, joined from team control) */}
+                        <td className="px-4 py-2 text-gray-500 text-xs">
+                          {editRow.teamLeader || '—'}
                         </td>
                         {/* Store ID */}
                         <td className="px-4 py-2">
@@ -444,6 +452,7 @@ export default function SchedulePage() {
                         <p className="font-medium text-gray-900 text-xs">{row.firstName} {row.surname}</p>
                         <p className="text-gray-400 text-xs">{row.userEmail}</p>
                       </td>
+                      <td className="px-4 py-2.5 text-gray-500 text-xs">{row.teamLeader || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600 font-mono text-xs">{row.storeId}</td>
                       <td className="px-4 py-2.5 text-gray-700">{row.storeName}</td>
                       <td className="px-4 py-2.5 text-gray-500">{row.channel || '—'}</td>

@@ -27,8 +27,8 @@ export async function GET(req: Request) {
   const userEmail = url.searchParams.get('userEmail') || '';
 
   const schedule = loadSchedule();
-  const references = loadReferences();
-  const storeControl = loadStoreControl();
+  const references = await loadReferences();
+  const storeControl = await loadStoreControl();
   const teamControl = loadTeamControl();
 
   // Build user lookup for extra fields (from references, which now bridges control files)

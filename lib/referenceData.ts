@@ -14,10 +14,12 @@ const EMPTY: ReferenceData = { stores: [], users: [], teams: [] };
  * the store/team control file is immediately visible to the next upload.
  * loadStoreControl() / loadTeamControl() already have their own fast _cache,
  * so the bridge rebuild here is trivial.
+ *
+ * Async because loadStoreControl() now reads from Vercel Blob on cold start.
  */
-export function loadReferences(): ReferenceData {
+export async function loadReferences(): Promise<ReferenceData> {
   // --- Bridge: build from control files if available ---
-  const storeControl = loadStoreControl();
+  const storeControl = await loadStoreControl();
   const teamControl = loadTeamControl();
 
   if (storeControl || teamControl) {
