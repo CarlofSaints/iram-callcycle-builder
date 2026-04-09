@@ -1,5 +1,7 @@
-import fs from 'fs';
+import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
+import { put, get } from '@vercel/blob';
 
 export interface ActivityEntry {
   id: string;
@@ -11,112 +13,83 @@ export interface ActivityEntry {
 }
 
 const MAX_ENTRIES = 1000;
-const FILE = path.join(process.cwd(), 'data', 'activityLog.json');
-const TMP_FILE = '/tmp/iram_activity.json';
-let _cache: ActivityEntry[] | null = null;
+const BLOB_KEY = 'activity-log.json';
+const LOCAL_FILE = path.join(process.cwd(), 'data', 'activityLog.json');
 
-export function loadActivityLog(): ActivityEntry[] {
-  if (_cache !== null) return _cache;
-
-  // Vercel: try /tmp first (survives across requests in same container)
-  if (process.env.VERCEL) {
+/**
+ * Load activity log.
+ *
+ * IMPORTANT: no module-level in-memory cache. Serverless has no shared memory
+ * across containers, so caching across requests causes stale-read bugs when
+ * container A writes blob and container B handles the next GET with a stale
+ * cache. The blob is the only reliable source of truth — always read from it.
+ */
+export async function loadActivityLog(): Promise<ActivityEntry[]> {
+  // Local dev: read from local file (no Blob in dev)
+  if (!process.env.VERCEL) {
     try {
-      if (fs.existsSync(TMP_FILE)) {
-        _cache = JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
-        return _cache!;
+      if (fsSync.existsSync(LOCAL_FILE)) {
+        const raw = await fs.readFile(LOCAL_FILE, 'utf-8');
+        return JSON.parse(raw) as ActivityEntry[];
       }
     } catch {}
+    return [];
   }
 
-  const env = process.env.IRAM_CC_ACTIVITY_LOG_JSON;
-  if (process.env.VERCEL && env) {
-    try {
-      _cache = JSON.parse(env);
-      try { fs.writeFileSync(TMP_FILE, env); } catch {}
-      return _cache!;
-    } catch {}
-  }
-
-  if (fs.existsSync(FILE)) {
-    try {
-      _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-      return _cache!;
-    } catch {}
-  }
-
-  if (env) {
-    try {
-      _cache = JSON.parse(env);
-      return _cache!;
-    } catch {}
+  // Production: ALWAYS read fresh from blob via SDK get() helper —
+  // list()+fetch(url) does NOT work for private stores (returns 403).
+  try {
+    const result = await get(BLOB_KEY, { access: 'private', useCache: false });
+    if (result && result.statusCode === 200) {
+      const text = await new Response(result.stream).text();
+      return JSON.parse(text) as ActivityEntry[];
+    }
+  } catch (err) {
+    console.error('[activityLog] Blob load failed:', err instanceof Error ? err.message : err);
   }
 
   return [];
 }
 
+/**
+ * Append an activity entry. Swallows errors so that a failing blob write
+ * never breaks the calling operation (uploads, logins, etc.).
+ */
 export async function addActivity(entry: ActivityEntry): Promise<void> {
-  const log = loadActivityLog();
-  log.unshift(entry);
-  if (log.length > MAX_ENTRIES) log.splice(MAX_ENTRIES);
-  await saveActivityLog(log);
-}
-
-async function saveActivityLog(log: ActivityEntry[]) {
-  _cache = log;
-  const json = JSON.stringify(log, null, 2);
-
-  // Vercel: write to /tmp for container-level persistence
-  if (process.env.VERCEL) {
-    try { fs.writeFileSync(TMP_FILE, json); } catch {}
-  }
-
   try {
-    const dir = path.dirname(FILE);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(FILE, json);
-    if (!process.env.VERCEL) return;
-  } catch {
-    // Vercel read-only FS
-  }
-
-  const token = process.env.VERCEL_TOKEN;
-  const projectId = process.env.VERCEL_PROJECT_ID;
-  if (token && projectId) {
-    try {
-      await upsertVercelEnvVar(token, projectId, log);
-    } catch (err) {
-      console.error('[activityLog] Vercel env var update failed:', err);
-    }
+    const log = await loadActivityLog();
+    log.unshift(entry);
+    if (log.length > MAX_ENTRIES) log.splice(MAX_ENTRIES);
+    await saveActivityLog(log);
+  } catch (err) {
+    console.error('[activityLog] addActivity failed:', err instanceof Error ? err.message : err);
   }
 }
 
-async function upsertVercelEnvVar(token: string, projectId: string, log: ActivityEntry[]) {
-  const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!listRes.ok) return;
+async function saveActivityLog(log: ActivityEntry[]): Promise<void> {
+  const json = JSON.stringify(log);
 
-  const { envs } = await listRes.json() as { envs: { id: string; key: string }[] };
-  const envRecord = envs.find(e => e.key === 'IRAM_CC_ACTIVITY_LOG_JSON');
-  const value = JSON.stringify(log);
-
-  if (!envRecord) {
-    await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: 'IRAM_CC_ACTIVITY_LOG_JSON',
-        value,
-        type: 'plain',
-        target: ['production', 'preview', 'development'],
-      }),
+  // Canonical durable store: Vercel Blob. Write FIRST so failures can't be
+  // masked by an updated in-memory cache (we no longer have one anyway).
+  try {
+    await put(BLOB_KEY, json, {
+      // Blob store is provisioned with private access — must match.
+      access: 'private',
+      contentType: 'application/json',
+      allowOverwrite: true,
+      addRandomSuffix: false,
     });
-    return;
+  } catch (err) {
+    // Swallow — caller (addActivity) already catches, but log for observability
+    console.error('[activityLog] Blob write failed:', err instanceof Error ? err.message : err);
   }
 
-  await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envRecord.id}`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value }),
-  });
+  // Local dev: also write to data/ file
+  try {
+    const dir = path.dirname(LOCAL_FILE);
+    if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true });
+    await fs.writeFile(LOCAL_FILE, json, 'utf-8');
+  } catch {
+    // Vercel read-only FS — expected
+  }
 }

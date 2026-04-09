@@ -1,61 +1,47 @@
 import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
-import { put, list, del } from '@vercel/blob';
+import { put, list, del, get } from '@vercel/blob';
 import { StoreControlData } from './types';
 
 const BLOB_KEY = 'store-control.json';
-const TMP_PATH = '/tmp/iram_store_control.json';
 const LOCAL_FILE = path.join(process.cwd(), 'data', 'storeControl.json');
-
-// In-memory cache — matches the _cache pattern used in scheduleData / userData /
-// referenceData to make writes immediately visible to subsequent reads in the
-// same request lifecycle (fixes the Vercel env-var stale-read bug class).
-let _cache: StoreControlData | null = null;
 
 /**
  * Load store control data.
- * Resolution order: in-memory cache → /tmp (same container) → Vercel Blob (cold
- * start or new container) → local data/ file (dev). Returns null if nothing
- * persisted anywhere.
+ *
+ * IMPORTANT: no module-level in-memory cache. Serverless has no shared memory
+ * across containers, so caching across requests causes stale-read bugs when
+ * container A writes blob and container B handles the next GET with a stale
+ * cache. The blob is the only reliable source of truth — always read from it.
+ *
+ * Dev: local data/ file. Prod: always Vercel Blob via SDK get().
  */
 export async function loadStoreControl(): Promise<StoreControlData | null> {
-  if (_cache !== null) return _cache;
-
-  // Fast path: /tmp within same container (survives across requests, not cold starts)
-  try {
-    const raw = await fs.readFile(TMP_PATH, 'utf-8');
-    _cache = JSON.parse(raw);
-    return _cache;
-  } catch {}
-
-  // Canonical path: Vercel Blob (durable across cold starts and deploys)
-  try {
-    const { blobs } = await list({ prefix: BLOB_KEY });
-    const match = blobs.find(b => b.pathname === BLOB_KEY);
-    if (match) {
-      const res = await fetch(match.url, { cache: 'no-store' });
-      if (res.ok) {
-        const data = (await res.json()) as StoreControlData;
-        _cache = data;
-        // Warm /tmp so subsequent reads in this container skip the blob fetch
-        try { await fs.writeFile(TMP_PATH, JSON.stringify(data), 'utf-8'); } catch {}
-        return data;
+  // Local dev: read from local file (no Blob in dev)
+  if (!process.env.VERCEL) {
+    try {
+      if (fsSync.existsSync(LOCAL_FILE)) {
+        const raw = await fs.readFile(LOCAL_FILE, 'utf-8');
+        return JSON.parse(raw) as StoreControlData;
       }
+    } catch (err) {
+      console.error('[storeControlData] Local file read failed:', err);
     }
-  } catch (err) {
-    // Blob not linked yet, or transient network error — fall through to local
-    console.error('[storeControlData] Blob load failed:', err instanceof Error ? err.message : err);
+    return null;
   }
 
-  // Local dev fallback: read from data/ file
+  // Production: ALWAYS read fresh from blob via SDK get() helper —
+  // list()+fetch(url) does NOT work for private stores (returns 403).
   try {
-    if (fsSync.existsSync(LOCAL_FILE)) {
-      const raw = await fs.readFile(LOCAL_FILE, 'utf-8');
-      _cache = JSON.parse(raw);
-      return _cache;
+    const result = await get(BLOB_KEY, { access: 'private', useCache: false });
+    if (result && result.statusCode === 200) {
+      const text = await new Response(result.stream).text();
+      return JSON.parse(text) as StoreControlData;
     }
-  } catch {}
+  } catch (err) {
+    console.error('[storeControlData] Blob load failed:', err instanceof Error ? err.message : err);
+  }
 
   return null;
 }
@@ -69,25 +55,17 @@ export async function loadStoreControl(): Promise<StoreControlData | null> {
  * surface it to the admin instead of returning a 500 stack trace).
  */
 export async function saveStoreControl(data: StoreControlData): Promise<void> {
-  _cache = data;
   const json = JSON.stringify(data);
 
-  // Best-effort /tmp write — makes subsequent reads in the same container fast
-  try { await fs.writeFile(TMP_PATH, json, 'utf-8'); } catch {}
-
-  // Local dev: also write to data/ file
-  try {
-    const dir = path.dirname(LOCAL_FILE);
-    if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true });
-    await fs.writeFile(LOCAL_FILE, json, 'utf-8');
-  } catch {
-    // Vercel read-only FS — expected
-  }
-
-  // Canonical durable store: Vercel Blob
+  // Canonical durable store: Vercel Blob. Run this FIRST — if it throws, the
+  // in-memory cache must not be updated (otherwise a failed save would leave
+  // the serverless container with data that appears persisted but isn't,
+  // until the container recycles).
   try {
     await put(BLOB_KEY, json, {
-      access: 'public',
+      // Blob store is provisioned with private access — 'public' raises a
+      // "Cannot use public access on a private store" error from the SDK.
+      access: 'private',
       contentType: 'application/json',
       allowOverwrite: true,
       addRandomSuffix: false,
@@ -101,12 +79,19 @@ export async function saveStoreControl(data: StoreControlData): Promise<void> {
       `and that BLOB_READ_WRITE_TOKEN is set in environment variables.`,
     );
   }
+
+  // Blob write succeeded. Best-effort local dev file write only.
+  try {
+    const dir = path.dirname(LOCAL_FILE);
+    if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true });
+    await fs.writeFile(LOCAL_FILE, json, 'utf-8');
+  } catch {
+    // Vercel read-only FS — expected
+  }
 }
 
-/** Clear store control from cache, /tmp, local file, and Vercel Blob. */
+/** Clear store control from local file and Vercel Blob. */
 export async function clearStoreControl(): Promise<void> {
-  _cache = null;
-  try { await fs.unlink(TMP_PATH); } catch {}
   try { await fs.unlink(LOCAL_FILE); } catch {}
   // @vercel/blob del() takes a full URL — find it first via list()
   try {

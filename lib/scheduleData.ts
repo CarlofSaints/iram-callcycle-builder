@@ -1,56 +1,52 @@
-import fs from 'fs';
+import fs from 'fs/promises';
+import fsSync from 'fs';
 import path from 'path';
+import { put, get } from '@vercel/blob';
 import { ScheduleRow, ParsedEntry, UploadResult } from './types';
 
-const FILE = path.join(process.cwd(), 'data', 'schedule.json');
-const TMP_FILE = '/tmp/iram_schedule.json';
-let _cache: ScheduleRow[] | null = null;
+/**
+ * Canonical schedule persistence: Vercel Blob (private store).
+ *
+ * IMPORTANT: no module-level in-memory cache. Serverless has no shared memory
+ * across containers, so caching across requests causes stale-read bugs when
+ * container A writes blob and container B handles the next GET with a stale
+ * cache. The blob is the only reliable source of truth — always read from it.
+ */
 
-export function loadSchedule(): ScheduleRow[] {
-  if (_cache !== null) return _cache;
+const LOCAL_FILE = path.join(process.cwd(), 'data', 'schedule.json');
+const BLOB_KEY = 'schedule.json';
 
-  // Vercel: try /tmp first (survives across requests in same container)
-  if (process.env.VERCEL) {
+async function readFromBlob(): Promise<ScheduleRow[] | null> {
+  // Use the SDK's get() helper — it automatically attaches the BLOB auth token
+  // for private stores. list()+fetch(url) returns 403 without the signed token.
+  try {
+    const result = await get(BLOB_KEY, { access: 'private', useCache: false });
+    if (!result || result.statusCode !== 200) return null;
+    const text = await new Response(result.stream).text();
+    return JSON.parse(text) as ScheduleRow[];
+  } catch (err) {
+    console.error('[scheduleData] Blob read failed:', err instanceof Error ? err.message : err);
+    return null;
+  }
+}
+
+export async function loadSchedule(): Promise<ScheduleRow[]> {
+  // Local dev: read from local file (no Blob in dev)
+  if (!process.env.VERCEL) {
     try {
-      if (fs.existsSync(TMP_FILE)) {
-        _cache = JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
-        console.log(`[scheduleData] Loaded ${_cache!.length} rows from /tmp`);
-        return _cache!;
+      if (fsSync.existsSync(LOCAL_FILE)) {
+        const raw = await fs.readFile(LOCAL_FILE, 'utf-8');
+        return JSON.parse(raw) as ScheduleRow[];
       }
     } catch (err) {
-      console.error('[scheduleData] /tmp read failed:', err);
+      console.error('[scheduleData] Local file read failed:', err);
     }
+    return [];
   }
 
-  // Try env var (baked at deploy, updated via API for new containers)
-  const env = process.env.IRAM_CC_SCHEDULE_JSON;
-  if (process.env.VERCEL && env) {
-    try {
-      _cache = JSON.parse(env);
-      // Seed /tmp so future requests in this container are fast
-      try { fs.writeFileSync(TMP_FILE, env); } catch {}
-      console.log(`[scheduleData] Loaded ${_cache!.length} rows from env var`);
-      return _cache!;
-    } catch {}
-  }
-
-  // Local dev: read from data/ file
-  if (fs.existsSync(FILE)) {
-    try {
-      _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-      return _cache!;
-    } catch {}
-  }
-
-  // Non-Vercel fallback for env var
-  if (env) {
-    try {
-      _cache = JSON.parse(env);
-      return _cache!;
-    } catch {}
-  }
-
-  return [];
+  // Production: ALWAYS read fresh from blob. No module cache.
+  const fromBlob = await readFromBlob();
+  return fromBlob ?? [];
 }
 
 export async function mergeIntoSchedule(
@@ -58,7 +54,7 @@ export async function mergeIntoSchedule(
   uploadedBy: string,
   referenceStores: { storeCode: string; channel: string }[],
 ): Promise<UploadResult> {
-  const schedule = loadSchedule();
+  const schedule = await loadSchedule();
   const now = new Date().toISOString();
   const warnings: string[] = [];
   let rowsAdded = 0;
@@ -71,8 +67,6 @@ export async function mergeIntoSchedule(
   }
 
   for (const entry of entries) {
-    // Composite key: userEmail + storeId + cycle
-    const key = `${entry.userEmail.toLowerCase()}|${entry.storeId.toUpperCase()}|${entry.cycle}`;
     const existingIdx = schedule.findIndex(r =>
       r.userEmail.toLowerCase() === entry.userEmail.toLowerCase() &&
       r.storeId.toUpperCase() === entry.storeId.toUpperCase() &&
@@ -140,14 +134,12 @@ export async function mergeIntoSchedule(
 
   await saveSchedule(schedule);
 
-  // Deduplicate warnings
   const uniqueWarnings = [...new Set(warnings)];
-
   return { rowsAdded, rowsUpdated, totalRows: schedule.length, warnings: uniqueWarnings };
 }
 
 export async function updateScheduleRow(index: number, row: ScheduleRow): Promise<ScheduleRow[]> {
-  const schedule = loadSchedule();
+  const schedule = await loadSchedule();
   if (index < 0 || index >= schedule.length) throw new Error('Invalid row index');
   schedule[index] = row;
   await saveSchedule(schedule);
@@ -155,7 +147,7 @@ export async function updateScheduleRow(index: number, row: ScheduleRow): Promis
 }
 
 export async function deleteScheduleRow(index: number): Promise<ScheduleRow[]> {
-  const schedule = loadSchedule();
+  const schedule = await loadSchedule();
   if (index < 0 || index >= schedule.length) throw new Error('Invalid row index');
   schedule.splice(index, 1);
   await saveSchedule(schedule);
@@ -166,95 +158,38 @@ export async function clearSchedule(): Promise<void> {
   await saveSchedule([]);
 }
 
-export async function saveSchedule(schedule: ScheduleRow[]) {
-  _cache = schedule;
-  const json = JSON.stringify(schedule, null, 2);
+/**
+ * Writes schedule durably. Blob write runs FIRST — on failure we throw and
+ * leave the in-memory cache untouched so a failed save can never masquerade
+ * as success (the illusion bug that cost us hours on store control).
+ */
+export async function saveSchedule(schedule: ScheduleRow[]): Promise<void> {
+  const json = JSON.stringify(schedule);
 
-  // Vercel: always write to /tmp (container-level persistence)
-  if (process.env.VERCEL) {
-    try {
-      fs.writeFileSync(TMP_FILE, json);
-      console.log(`[scheduleData] Wrote ${schedule.length} rows to /tmp`);
-    } catch (err) {
-      console.error('[scheduleData] /tmp write failed:', err);
-    }
+  try {
+    await put(BLOB_KEY, json, {
+      // Blob store is provisioned with private access — 'public' raises
+      // "Cannot use public access on a private store" from the SDK.
+      access: 'private',
+      contentType: 'application/json',
+      allowOverwrite: true,
+      addRandomSuffix: false,
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(
+      `Failed to persist schedule to Vercel Blob: ${msg}. ` +
+      `Check that a Blob store is linked to this project (Storage tab → Connect to Project) ` +
+      `and that BLOB_READ_WRITE_TOKEN is set in environment variables.`,
+    );
   }
 
-  // Try local file write (works on dev, fails on Vercel read-only FS)
+  // Blob write succeeded. Best-effort local dev file write only.
   try {
-    const dir = path.dirname(FILE);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(FILE, json);
-    if (!process.env.VERCEL) return; // Local dev: file is sufficient
+    const dir = path.dirname(LOCAL_FILE);
+    if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true });
+    await fs.writeFile(LOCAL_FILE, JSON.stringify(schedule, null, 2), 'utf-8');
   } catch {
     // Expected on Vercel read-only FS
-  }
-
-  // Vercel: update env var for cross-container persistence
-  const token = process.env.VERCEL_TOKEN;
-  const projectId = process.env.VERCEL_PROJECT_ID;
-  if (token && projectId) {
-    try {
-      await upsertVercelEnvVar(token, projectId, schedule);
-      console.log(`[scheduleData] Env var updated (${schedule.length} rows)`);
-    } catch (err) {
-      console.error('[scheduleData] Vercel env var update failed:', err);
-    }
-  } else if (process.env.VERCEL) {
-    console.warn('[scheduleData] VERCEL_TOKEN or VERCEL_PROJECT_ID not set — data may not persist across containers');
-  }
-}
-
-async function upsertVercelEnvVar(token: string, projectId: string, schedule: ScheduleRow[]) {
-  const value = JSON.stringify(schedule);
-  console.log(`[scheduleData] Saving ${schedule.length} rows (${value.length} chars) to Vercel env var`);
-
-  const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!listRes.ok) {
-    const body = await listRes.text().catch(() => '');
-    console.error(`[scheduleData] Vercel env list failed: ${listRes.status} ${body.substring(0, 200)}`);
-    return;
-  }
-
-  const { envs } = await listRes.json() as { envs: { id: string; key: string }[] };
-  if (!envs) {
-    console.error('[scheduleData] Vercel env list returned no envs array');
-    return;
-  }
-
-  const envRecord = envs.find(e => e.key === 'IRAM_CC_SCHEDULE_JSON');
-
-  if (!envRecord) {
-    const createRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        key: 'IRAM_CC_SCHEDULE_JSON',
-        value,
-        type: 'plain',
-        target: ['production', 'preview', 'development'],
-      }),
-    });
-    if (!createRes.ok) {
-      const body = await createRes.text().catch(() => '');
-      console.error(`[scheduleData] Vercel env CREATE failed: ${createRes.status} ${body.substring(0, 200)}`);
-    } else {
-      console.log(`[scheduleData] Vercel env var created`);
-    }
-    return;
-  }
-
-  const patchRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envRecord.id}`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value }),
-  });
-  if (!patchRes.ok) {
-    const body = await patchRes.text().catch(() => '');
-    console.error(`[scheduleData] Vercel env PATCH failed: ${patchRes.status} ${body.substring(0, 200)}`);
-  } else {
-    console.log(`[scheduleData] Vercel env var updated`);
   }
 }

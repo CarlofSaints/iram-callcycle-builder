@@ -7,6 +7,10 @@ import { loadTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
 import { randomUUID } from 'crypto';
 
+export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+export const maxDuration = 60;
+
 function daysToShort(days: string[]): string {
   const map: Record<string, string> = {
     Monday: 'Mon', Tuesday: 'Tue', Wednesday: 'Wed',
@@ -26,7 +30,7 @@ export async function GET(req: Request) {
   const userName = url.searchParams.get('userName') || 'Unknown';
   const userEmail = url.searchParams.get('userEmail') || '';
 
-  const schedule = loadSchedule();
+  const schedule = await loadSchedule();
   const references = await loadReferences();
   const storeControl = await loadStoreControl();
   const teamControl = loadTeamControl();

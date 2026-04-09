@@ -9,6 +9,11 @@ import { processStoreRows } from '@/lib/storeRowProcessor';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+// Parsing a filtered iRam store control file (~30K rows max) typically
+// completes in 5–15s. 60s gives comfortable headroom; bump toward the Pro-tier
+// 300s ceiling if a larger file ever becomes the norm.
+export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {

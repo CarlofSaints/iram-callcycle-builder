@@ -7,6 +7,7 @@ import { parseJoshAlt } from './parseJoshAlt';
 import { parseEmailSheet } from './parseEmailSheet';
 import { parseSimpleName } from './parseSimpleName';
 import { parseMarkerFormat } from './parseMarkerFormat';
+import { parse4Week } from './parse4Week';
 
 export interface ParseResult {
   format: FileFormat;
@@ -14,7 +15,7 @@ export interface ParseResult {
   warnings: string[];
 }
 
-export type ParseMode = 'team-leader' | 'user' | 'auto';
+export type ParseMode = 'team-leader' | 'user' | 'user-4wk' | 'auto';
 
 export function parseCallCycleFile(
   buffer: Buffer,
@@ -40,6 +41,14 @@ export function parseCallCycleFile(
   if (parseMode === 'user') {
     format = 'email-sheet';
     const result = parseEmailSheet(workbook, references, teamControl);
+    entries = result.entries;
+    warnings = result.warnings;
+    return { format, entries, warnings };
+  }
+
+  if (parseMode === 'user-4wk') {
+    format = 'user-4wk';
+    const result = parse4Week(workbook, references);
     entries = result.entries;
     warnings = result.warnings;
     return { format, entries, warnings };

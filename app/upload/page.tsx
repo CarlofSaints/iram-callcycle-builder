@@ -4,13 +4,13 @@ import { useAuth } from '@/lib/useAuth';
 import Header from '@/components/Header';
 import { useState, useRef } from 'react';
 
-type ParseMode = 'team-leader' | 'user';
+type ParseMode = 'team-leader' | 'user' | 'user-4wk';
 
 export default function UploadPage() {
   const { session, loading, logout } = useAuth();
   const [file, setFile] = useState<File | null>(null);
   const [ccEmail, setCcEmail] = useState('');
-  const [parseMode, setParseMode] = useState<ParseMode>('team-leader');
+  const [parseMode, setParseMode] = useState<ParseMode>('user-4wk');
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{
     ok?: boolean;
@@ -72,6 +72,21 @@ export default function UploadPage() {
           <div className="flex flex-col gap-2">
             <label className="text-xs text-gray-500 font-medium uppercase tracking-wide">Sheet Format</label>
             <div className="flex flex-col gap-2">
+              <label className={`flex items-start gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${parseMode === 'user-4wk' ? 'border-[#7CC042] bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
+                <input
+                  type="radio"
+                  name="parseMode"
+                  value="user-4wk"
+                  checked={parseMode === 'user-4wk'}
+                  onChange={() => setParseMode('user-4wk')}
+                  className="mt-0.5 accent-[#7CC042]"
+                />
+                <span className="flex flex-col">
+                  <span className="text-sm font-semibold text-gray-900">User Sheets 4wk <span className="text-[11px] font-normal text-[#7CC042]">(recommended)</span></span>
+                  <span className="text-xs text-gray-500 mt-0.5">Sheet name = user&apos;s Perigee email. Four individual week blocks (WEEK 1 / WEEK 2 / WEEK 3 / WEEK 4) stacked vertically with merged week labels in column A. Columns from H onwards are ignored.</span>
+                </span>
+              </label>
+
               <label className={`flex items-start gap-3 border rounded-lg px-4 py-3 cursor-pointer transition-colors ${parseMode === 'team-leader' ? 'border-[#7CC042] bg-green-50' : 'border-gray-200 hover:border-gray-300'}`}>
                 <input
                   type="radio"
@@ -82,7 +97,7 @@ export default function UploadPage() {
                   className="mt-0.5 accent-[#7CC042]"
                 />
                 <span className="flex flex-col">
-                  <span className="text-sm font-semibold text-gray-900">Team Leader Sheets <span className="text-[11px] font-normal text-[#7CC042]">(recommended)</span></span>
+                  <span className="text-sm font-semibold text-gray-900">Team Leader Sheets</span>
                   <span className="text-xs text-gray-500 mt-0.5">Sheet name = Team Leader email. Each subordinate has an <code className="bg-gray-100 px-1 rounded">Email:</code> + <code className="bg-gray-100 px-1 rounded">Week:</code> marker above their cycle table.</span>
                 </span>
               </label>

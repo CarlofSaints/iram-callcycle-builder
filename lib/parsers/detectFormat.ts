@@ -1,6 +1,6 @@
 import * as XLSX from 'xlsx';
 
-export type FileFormat = 'marker' | 'josh-standard' | 'ash-region' | 'josh-alt' | 'email-sheet' | 'simple-name' | 'unknown';
+export type FileFormat = 'marker' | 'josh-standard' | 'ash-region' | 'josh-alt' | 'email-sheet' | 'simple-name' | 'user-4wk' | 'unknown';
 
 const DAYS_SHORT = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 

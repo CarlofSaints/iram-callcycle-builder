@@ -5,6 +5,10 @@ import { addActivity } from '@/lib/activityLogData';
 import { ScheduleRow } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
+export const runtime = 'nodejs';
+// Blob round-trip on cold-start reads can take a second or two; 60s leaves
+// comfortable headroom for every schedule mutation.
+export const maxDuration = 60;
 
 /**
  * Build memberEmail → teamLeaderEmail map from the latest team control data.
@@ -37,7 +41,7 @@ function stripTeamLeader(row: ScheduleRow): ScheduleRow {
 }
 
 export async function GET() {
-  const schedule = loadSchedule();
+  const schedule = await loadSchedule();
   const lookup = buildTeamLeaderLookup();
   const decorated = decorateWithTeamLeader(schedule, lookup);
   return NextResponse.json(decorated, {
@@ -57,7 +61,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
-    const current = loadSchedule();
+    const current = await loadSchedule();
     const rowCount = current.length;
 
     await clearSchedule();
@@ -125,7 +129,7 @@ export async function DELETE(req: NextRequest) {
     }
 
     // Capture row detail before deletion for the activity log
-    const current = loadSchedule();
+    const current = await loadSchedule();
     const row = current[index];
     const detail = row
       ? `Deleted row ${index}: ${row.firstName} ${row.surname} — ${row.storeId} ${row.storeName} (${row.cycle})`

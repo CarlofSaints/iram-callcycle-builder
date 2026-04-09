@@ -103,33 +103,18 @@ export default function ControlFilesPage() {
     if (!storeFile || !session) return;
     setStoreUploading(true);
     try {
-      // Upload the raw .xlsx directly from the browser to Vercel Blob — this
-      // bypasses Vercel's 4.5 MB serverless request body limit that the old
-      // JSON/gzip flow was hitting on ~92K-row store control files.
-      const { upload } = await import('@vercel/blob/client');
-      const uuid = crypto.randomUUID();
-      const pathname = `temp-uploads/store-raw-${uuid}.xlsx`;
+      const formData = new FormData();
+      formData.append('file', storeFile);
+      formData.append('userName', `${session.name} ${session.surname}`);
+      formData.append('userEmail', session.email);
+      formData.append('mode', mode);
 
-      const newBlob = await upload(pathname, storeFile, {
-        access: 'public',
-        handleUploadUrl: '/api/control-files/stores/blob-token',
-        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-        multipart: true, // handle large files in parallel chunks with retries
-      });
-
-      // Now trigger server-side parsing + processing of the uploaded blob
-      const res = await fetch('/api/control-files/stores/process', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          blobUrl: newBlob.url,
-          userName: `${session.name} ${session.surname}`,
-          userEmail: session.email,
-          mode,
-        }),
-      });
-
+      const res = await fetch('/api/control-files/stores', { method: 'POST', body: formData });
       if (!res.ok) {
+        if (res.status === 413) {
+          notify('File is too large (over 4.5 MB). Trim your store control file further — remove channels iRam doesn’t service or archived stores.', 'error');
+          return;
+        }
         let msg = `Upload failed (${res.status})`;
         try { const d = await res.json(); msg = d.error || d.detail || msg; } catch { /* non-JSON response */ }
         notify(msg, 'error');

@@ -8,7 +8,7 @@ import { sendUploadNotification } from '@/lib/email';
 import { loadUsers } from '@/lib/userData';
 import { randomUUID } from 'crypto';
 
-const VALID_PARSE_MODES: ParseMode[] = ['team-leader', 'user', 'auto'];
+const VALID_PARSE_MODES: ParseMode[] = ['team-leader', 'user', 'user-4wk', 'auto'];
 
 export async function POST(req: NextRequest) {
   try {
