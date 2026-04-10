@@ -47,13 +47,16 @@ export default function Header({ session, onLogout }: HeaderProps) {
           />
         </Link>
 
-        {/* Center: Nav links */}
+        {/* Center: Nav links (desktop) */}
         <nav className="hidden md:flex items-center gap-1">
           <Link href="/upload" className={navClass('/upload')}>
             Upload
           </Link>
           <Link href="/schedule" className={navClass('/schedule')}>
             Schedule
+          </Link>
+          <Link href="/dashboard" className={navClass('/dashboard')}>
+            Dashboard
           </Link>
           {session.isAdmin && (
             <>
@@ -68,6 +71,13 @@ export default function Header({ session, onLogout }: HeaderProps) {
               </Link>
             </>
           )}
+        </nav>
+
+        {/* Mobile nav — visible below md breakpoint */}
+        <nav className="flex md:hidden items-center gap-1 overflow-x-auto">
+          <Link href="/upload" className={navClass('/upload')}>Upload</Link>
+          <Link href="/schedule" className={navClass('/schedule')}>Schedule</Link>
+          <Link href="/dashboard" className={navClass('/dashboard')}>Dashboard</Link>
         </nav>
 
         {/* Right: 5FR + User + sign out */}
