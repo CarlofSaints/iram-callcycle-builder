@@ -47,3 +47,4 @@ data/storeControl.json
 data/teamControl.json
 
 .env*.local
+.vercel
