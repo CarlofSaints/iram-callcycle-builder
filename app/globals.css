@@ -1,13 +1,5 @@
 @import "tailwindcss";
 
-@theme inline {
-  --color-iram-green: #7CC042;
-  --color-iram-green-dark: #5a9830;
-  --color-iram-grey: #828282;
-  --color-iram-grey-light: #C2C4C0;
-  --color-iram-charcoal: #32373C;
-}
-
 body {
   background: #f9fafb;
   color: #111827;

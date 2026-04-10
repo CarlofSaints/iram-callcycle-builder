@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { loadUsers } from '@/lib/userData';
 import { sendWelcomeEmail, sendPasswordResetEmail } from '@/lib/email';
+import { getTenantSlug } from '@/lib/getTenantSlug';
+import { getTenantEmailConfig } from '@/lib/getTenantConfig';
 
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
+  const slug = await getTenantSlug();
+  const tenant = await getTenantEmailConfig();
   const { id } = await params;
   const { plainPassword, type, name: bodyName, email: bodyEmail } = await req.json();
 
@@ -10,7 +14,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   let email = bodyEmail as string | undefined;
 
   if (!name || !email) {
-    const user = loadUsers().find(u => u.id === id);
+    const user = (await loadUsers(slug)).find(u => u.id === id);
     if (!user) return NextResponse.json({ error: 'Not found' }, { status: 404 });
     name = `${user.name} ${user.surname}`;
     email = user.email;
@@ -21,9 +25,9 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   try {
     let result;
     if (type === 'reset') {
-      result = await sendPasswordResetEmail(email as string, name as string, plainPassword);
+      result = await sendPasswordResetEmail(email as string, name as string, plainPassword, tenant);
     } else {
-      result = await sendWelcomeEmail(email as string, name as string, plainPassword);
+      result = await sendWelcomeEmail(email as string, name as string, plainPassword, tenant);
     }
     if (result && (result as { error?: unknown }).error) {
       const err = (result as { error: unknown }).error;

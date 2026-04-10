@@ -5,6 +5,9 @@ import { loadReferences } from '@/lib/referenceData';
 import { loadStoreControl } from '@/lib/storeControlData';
 import { loadTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
+import { getTenantSlug } from '@/lib/getTenantSlug';
+import { getTenantEmailConfig } from '@/lib/getTenantConfig';
+import { hexToArgb } from '@/lib/tenantConfig';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -26,14 +29,17 @@ function parseCycleWeeks(cycle: string): number[] {
 }
 
 export async function GET(req: Request) {
+  const slug = await getTenantSlug();
+  const tenant = await getTenantEmailConfig();
+
   const url = new URL(req.url);
   const userName = url.searchParams.get('userName') || 'Unknown';
   const userEmail = url.searchParams.get('userEmail') || '';
 
-  const schedule = await loadSchedule();
-  const references = await loadReferences();
-  const storeControl = await loadStoreControl();
-  const teamControl = loadTeamControl();
+  const schedule = await loadSchedule(slug);
+  const references = await loadReferences(slug);
+  const storeControl = await loadStoreControl(slug);
+  const teamControl = await loadTeamControl(slug);
 
   // Build user lookup for extra fields (from references, which now bridges control files)
   const userLookup = new Map<string, {
@@ -69,7 +75,6 @@ export async function GET(req: Request) {
   }
 
   // Build reverse lookup: email local part → full email + memberId
-  // (handles rows where userEmail is blank but firstName matches an email local part)
   const localPartLookup = new Map<string, { email: string; memberId: string; teamName: string; teamLeader: string }>();
   if (teamControl) {
     for (const t of teamControl.teams) {
@@ -97,14 +102,14 @@ export async function GET(req: Request) {
 
   const workbook = new ExcelJS.Workbook();
 
-  // Header styling — colour groups for visual relevance
+  // Header styling — use tenant brand color for week columns
   const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
   const COL_BLUE   = 'FF4472C4';  // User info
   const COL_DGREEN = 'FF548235';  // Cycle admin
   const COL_ORANGE = 'FFED7D31';  // Action
   const COL_NAVY   = 'FF2F5496';  // Store info
   const COL_GREY   = 'FF828282';  // Cycle number
-  const COL_GREEN  = 'FF7CC042';  // Weeks (iRam brand)
+  const COL_BRAND  = hexToArgb(tenant.primaryColor);  // Weeks (tenant brand)
 
   // Schedule sheet: column-index → colour (1-based)
   const scheduleColors: Record<number, string> = {
@@ -114,13 +119,13 @@ export async function GET(req: Request) {
     12: COL_ORANGE,
     13: COL_NAVY, 14: COL_NAVY, 15: COL_NAVY,
     16: COL_GREY,
-    17: COL_GREEN, 18: COL_GREEN, 19: COL_GREEN,
-    20: COL_GREEN, 21: COL_GREEN, 22: COL_GREEN,
+    17: COL_BRAND, 18: COL_BRAND, 19: COL_BRAND,
+    20: COL_BRAND, 21: COL_BRAND, 22: COL_BRAND,
   };
 
   function applyHeaderColors(row: ExcelJS.Row, colorMap?: Record<number, string>) {
     row.eachCell((cell, colNumber) => {
-      const argb = colorMap ? (colorMap[colNumber] || COL_GREEN) : COL_GREEN;
+      const argb = colorMap ? (colorMap[colNumber] || COL_BRAND) : COL_BRAND;
       cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb } };
       cell.font = headerFont;
     });
@@ -474,7 +479,7 @@ export async function GET(req: Request) {
   const buffer = await workbook.xlsx.writeBuffer();
 
   // Log activity
-  await addActivity({
+  await addActivity(slug, {
     id: randomUUID(),
     timestamp: new Date().toISOString(),
     type: 'download',
@@ -484,7 +489,7 @@ export async function GET(req: Request) {
   });
 
   const date = new Date().toISOString().split('T')[0];
-  const filename = `iRam - Perigee Call Schedule - ${date}.xlsx`;
+  const filename = `${tenant.name} - Perigee Call Schedule - ${date}.xlsx`;
 
   return new NextResponse(buffer as ArrayBuffer, {
     headers: {

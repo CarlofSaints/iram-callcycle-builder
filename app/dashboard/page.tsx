@@ -228,7 +228,7 @@ export default function DashboardPage() {
 
       <main className="max-w-screen-xl mx-auto px-4 py-8 flex flex-col gap-6">
         {/* Page header */}
-        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-4">
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4">
           <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">
             Summary of {schedule.length} schedule rows
@@ -254,7 +254,7 @@ export default function DashboardPage() {
                   <select
                     value={channelFilter}
                     onChange={e => setChannelFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   >
                     <option value="">All Channels</option>
                     {channels.map(c => <option key={c} value={c}>{c}</option>)}
@@ -266,7 +266,7 @@ export default function DashboardPage() {
                   <select
                     value={teamLeaderFilter}
                     onChange={e => setTeamLeaderFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   >
                     <option value="">All Team Leaders</option>
                     {teamLeaders.map(t => <option key={t} value={t}>{t}</option>)}
@@ -278,7 +278,7 @@ export default function DashboardPage() {
                   <select
                     value={userFilter}
                     onChange={e => setUserFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]"
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                   >
                     <option value="">All Users</option>
                     {users.map(([email, name]) => <option key={email} value={email}>{name}</option>)}
@@ -288,7 +288,7 @@ export default function DashboardPage() {
                 {(channelFilter || userFilter || teamLeaderFilter) && (
                   <button
                     onClick={() => { setChannelFilter(''); setUserFilter(''); setTeamLeaderFilter(''); }}
-                    className="text-sm text-[#7CC042] hover:text-[#5a9830] font-semibold px-3 py-2 transition-colors"
+                    className="text-sm text-[var(--color-primary)] hover:text-[var(--color-primary-dark)] font-semibold px-3 py-2 transition-colors"
                   >
                     Clear Filters
                   </button>

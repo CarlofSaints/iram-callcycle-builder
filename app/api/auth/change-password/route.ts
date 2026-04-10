@@ -2,9 +2,11 @@ import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
 import { loadUsers, saveUsers } from '@/lib/userData';
 import { addActivity } from '@/lib/activityLogData';
+import { getTenantSlug } from '@/lib/getTenantSlug';
 import { randomUUID } from 'crypto';
 
 export async function POST(req: NextRequest) {
+  const slug = await getTenantSlug();
   const { userId, currentPassword, newPassword } = await req.json();
   if (!userId || !currentPassword || !newPassword) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
@@ -14,7 +16,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
   }
 
-  const users = loadUsers();
+  const users = await loadUsers(slug);
   const user = users.find(u => u.id === userId);
   if (!user) {
     return NextResponse.json({ error: 'User not found' }, { status: 404 });
@@ -27,9 +29,9 @@ export async function POST(req: NextRequest) {
 
   user.password = await bcrypt.hash(newPassword, 10);
   user.forcePasswordChange = false;
-  await saveUsers(users);
+  await saveUsers(slug, users);
 
-  await addActivity({
+  await addActivity(slug, {
     id: randomUUID(),
     timestamp: new Date().toISOString(),
     type: 'password_changed',

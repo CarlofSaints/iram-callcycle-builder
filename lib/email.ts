@@ -6,17 +6,29 @@ function getResend() {
   return _resend;
 }
 
-const FROM = 'iRam Call Cycle Builder <report_sender@outerjoin.co.za>';
-const APP_URL = process.env.NEXT_PUBLIC_SITE_URL || 'https://iram-callcycle-builder.vercel.app';
+export interface EmailTenantConfig {
+  name: string;
+  subtitle: string;
+  primaryColor: string;
+  appUrl?: string;
+}
 
-function emailShell(bodyContent: string) {
+function getFrom(tenant: EmailTenantConfig) {
+  return `${tenant.name} Call Cycle Builder <report_sender@outerjoin.co.za>`;
+}
+
+function getAppUrl(tenant: EmailTenantConfig) {
+  return tenant.appUrl || process.env.NEXT_PUBLIC_SITE_URL || 'https://callcycle.fieldgoose.outerjoin.co.za';
+}
+
+function emailShell(bodyContent: string, tenant: EmailTenantConfig) {
   return `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e5e5;">
       <!-- Header -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#7CC042;">
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:${tenant.primaryColor};">
         <tr>
           <td style="padding:20px 28px;">
-            <div style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:1px;margin:0;">iRAM CALL CYCLE BUILDER</div>
+            <div style="color:#fff;font-size:20px;font-weight:bold;letter-spacing:1px;margin:0;">${tenant.name.toUpperCase()} ${tenant.subtitle.toUpperCase()}</div>
             <div style="color:#fff;margin:3px 0 0;opacity:0.85;font-size:12px;">Powered by OuterJoin &amp; Perigee</div>
           </td>
         </tr>
@@ -29,35 +41,37 @@ function emailShell(bodyContent: string) {
 
       <!-- Footer -->
       <div style="padding:14px 28px;text-align:center;font-size:11px;color:#999;background:#f9f9f9;border-top:1px solid #eee;">
-        iRam Call Cycle Builder &bull; Powered by OuterJoin &amp; Perigee
+        ${tenant.name} ${tenant.subtitle} &bull; Powered by OuterJoin &amp; Perigee
       </div>
     </div>
   `;
 }
 
-export async function sendWelcomeEmail(to: string, name: string, password: string) {
+export async function sendWelcomeEmail(to: string, name: string, password: string, tenant: EmailTenantConfig) {
+  const appUrl = getAppUrl(tenant);
   const body = `
     <p style="margin:0 0 14px;">Hi <strong>${name}</strong>,</p>
-    <p style="margin:0 0 8px;">Your account has been created on <strong>iRam Call Cycle Builder</strong>.</p>
+    <p style="margin:0 0 8px;">Your account has been created on <strong>${tenant.name} ${tenant.subtitle}</strong>.</p>
     <p style="margin:0 0 20px;color:#555;font-size:14px;">This is the portal used to convert raw call cycle files into Perigee Call Schedule format.</p>
     <table style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:14px 16px;width:100%;margin-bottom:20px;">
-      <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Login URL</td><td style="font-size:13px;"><a href="${APP_URL}/login" style="color:#7CC042;">${APP_URL}/login</a></td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Login URL</td><td style="font-size:13px;"><a href="${appUrl}/login" style="color:${tenant.primaryColor};">${appUrl}/login</a></td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Email</td><td style="font-size:13px;">${to}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Password</td><td style="font-size:13px;font-family:monospace;">${password}</td></tr>
     </table>
     <p style="margin:0 0 20px;color:#666;font-size:13px;">Please change your password after your first login.</p>
-    <a href="${APP_URL}/login" style="background:#7CC042;color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:bold;font-size:14px;display:inline-block;">Login Now</a>
+    <a href="${appUrl}/login" style="background:${tenant.primaryColor};color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:bold;font-size:14px;display:inline-block;">Login Now</a>
   `;
 
   return getResend().emails.send({
-    from: FROM,
+    from: getFrom(tenant),
     to,
-    subject: 'Welcome to iRam Call Cycle Builder',
-    html: emailShell(body),
+    subject: `Welcome to ${tenant.name} ${tenant.subtitle}`,
+    html: emailShell(body, tenant),
   });
 }
 
-export async function sendPasswordResetEmail(to: string, name: string, password: string) {
+export async function sendPasswordResetEmail(to: string, name: string, password: string, tenant: EmailTenantConfig) {
+  const appUrl = getAppUrl(tenant);
   const body = `
     <p style="margin:0 0 14px;">Hi <strong>${name}</strong>,</p>
     <p style="margin:0 0 20px;">Your password has been reset. Use the credentials below to log in.</p>
@@ -65,14 +79,14 @@ export async function sendPasswordResetEmail(to: string, name: string, password:
       <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Email</td><td style="font-size:13px;">${to}</td></tr>
       <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">New Password</td><td style="font-size:13px;font-family:monospace;">${password}</td></tr>
     </table>
-    <a href="${APP_URL}/login" style="background:#7CC042;color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:bold;font-size:14px;display:inline-block;">Login Now</a>
+    <a href="${appUrl}/login" style="background:${tenant.primaryColor};color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:bold;font-size:14px;display:inline-block;">Login Now</a>
   `;
 
   return getResend().emails.send({
-    from: FROM,
+    from: getFrom(tenant),
     to,
-    subject: 'iRam Call Cycle Builder — Password Reset',
-    html: emailShell(body),
+    subject: `${tenant.name} ${tenant.subtitle} — Password Reset`,
+    html: emailShell(body, tenant),
   });
 }
 
@@ -92,6 +106,7 @@ export async function sendUploadNotification(
     status: 'success' | 'partial' | 'failed';
     errorMessage?: string;
   },
+  tenant: EmailTenantConfig,
 ) {
   if (!toEmails.length) return;
 
@@ -99,7 +114,7 @@ export async function sendUploadNotification(
   const dateStr = ts.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
   const timeStr = ts.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', hour12: false });
 
-  const statusColor = entry.status === 'success' ? '#7CC042' : entry.status === 'partial' ? '#F59E0B' : '#EF4444';
+  const statusColor = entry.status === 'success' ? tenant.primaryColor : entry.status === 'partial' ? '#F59E0B' : '#EF4444';
   const statusLabel = entry.status === 'success' ? 'Successful' : entry.status === 'partial' ? 'Partially Loaded' : 'Failed';
   const statusIcon = entry.status === 'success' ? '&#10003;' : entry.status === 'partial' ? '&#9888;' : '&#10007;';
 
@@ -130,20 +145,20 @@ export async function sendUploadNotification(
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">File</td><td style="font-size:13px;font-family:monospace;word-break:break-all;">${entry.filename}</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Format Detected</td><td style="font-size:13px;">${entry.format}</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Entries Found</td><td style="font-size:13px;">${entry.entriesFound}</td></tr>
-      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Added</td><td style="font-size:13px;color:${entry.rowsAdded > 0 ? '#7CC042' : '#666'};font-weight:${entry.rowsAdded > 0 ? 'bold' : 'normal'};">${entry.rowsAdded}</td></tr>
+      <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Added</td><td style="font-size:13px;color:${entry.rowsAdded > 0 ? tenant.primaryColor : '#666'};font-weight:${entry.rowsAdded > 0 ? 'bold' : 'normal'};">${entry.rowsAdded}</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Rows Updated</td><td style="font-size:13px;color:${entry.rowsUpdated > 0 ? '#F59E0B' : '#666'};font-weight:${entry.rowsUpdated > 0 ? 'bold' : 'normal'};">${entry.rowsUpdated}</td></tr>
       <tr><td style="padding:5px 12px 5px 0;color:#666;font-size:13px;white-space:nowrap;">Total Schedule Rows</td><td style="font-size:13px;font-weight:bold;">${entry.totalRows}</td></tr>
     </table>
     ${warningsHtml}
     ${errorHtml}
-    <p style="margin:0;color:#999;font-size:12px;">This is an automated notification from iRam Call Cycle Builder.</p>
+    <p style="margin:0;color:#999;font-size:12px;">This is an automated notification from ${tenant.name} ${tenant.subtitle}.</p>
   `;
 
   const subjectStatus = entry.status === 'success' ? '' : entry.status === 'partial' ? ' [WARNINGS]' : ' [FAILED]';
   return getResend().emails.send({
-    from: FROM,
+    from: getFrom(tenant),
     to: toEmails,
-    subject: `iRam CC: Upload by ${entry.userName} — ${entry.filename}${subjectStatus}`,
-    html: emailShell(body),
+    subject: `${tenant.name} CC: Upload by ${entry.userName} — ${entry.filename}${subjectStatus}`,
+    html: emailShell(body, tenant),
   });
 }

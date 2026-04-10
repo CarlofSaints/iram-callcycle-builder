@@ -2,9 +2,11 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useTenant } from '@/contexts/TenantContext';
 
 export default function LoginPage() {
   const router = useRouter();
+  const tenant = useTenant();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPw, setShowPw] = useState(false);
@@ -24,8 +26,9 @@ export default function LoginPage() {
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Login failed'); return; }
 
-      localStorage.setItem('iram_cc_session', JSON.stringify({
-        id: data.id, name: data.name, surname: data.surname, email: data.email, isAdmin: data.isAdmin,
+      localStorage.setItem('cc_session', JSON.stringify({
+        id: data.id, name: data.name, surname: data.surname, email: data.email,
+        isAdmin: data.isAdmin, role: data.role,
       }));
 
       if (data.forcePasswordChange) {
@@ -44,9 +47,9 @@ export default function LoginPage() {
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
         {/* Header card */}
-        <div className="bg-[#7CC042] rounded-t-xl px-8 py-6 text-white text-center">
-          <h1 className="text-2xl font-bold tracking-wide">iRam</h1>
-          <p className="text-sm opacity-90 mt-1">Call Cycle Builder</p>
+        <div className="bg-[var(--color-primary)] rounded-t-xl px-8 py-6 text-white text-center">
+          <h1 className="text-2xl font-bold tracking-wide">{tenant.name}</h1>
+          <p className="text-sm opacity-90 mt-1">{tenant.subtitle}</p>
           <p className="text-xs opacity-70 mt-0.5">Powered by OuterJoin &amp; Perigee</p>
         </div>
 
@@ -63,7 +66,7 @@ export default function LoginPage() {
               onChange={e => setEmail(e.target.value)}
               required
               autoFocus
-              className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042] focus:border-transparent"
+              className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
               placeholder="you@example.com"
             />
           </div>
@@ -76,7 +79,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 required
-                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#7CC042] focus:border-transparent"
+                className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] focus:border-transparent"
                 placeholder="••••••••"
               />
               <button
@@ -99,7 +102,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white font-bold py-2.5 rounded-lg transition-colors text-sm tracking-wide"
+            className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white font-bold py-2.5 rounded-lg transition-colors text-sm tracking-wide"
           >
             {loading ? 'Signing in...' : 'Sign In'}
           </button>

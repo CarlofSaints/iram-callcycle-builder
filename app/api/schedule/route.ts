@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { loadSchedule, updateScheduleRow, deleteScheduleRow, clearSchedule } from '@/lib/scheduleData';
 import { loadTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
+import { getTenantSlug } from '@/lib/getTenantSlug';
+import { checkRole } from '@/lib/checkRole';
 import { ScheduleRow } from '@/lib/types';
 
 export const dynamic = 'force-dynamic';
@@ -14,9 +16,9 @@ export const maxDuration = 60;
  * Build memberEmail → teamLeaderEmail map from the latest team control data.
  * Used to decorate schedule rows server-side — never persisted.
  */
-function buildTeamLeaderLookup(): Map<string, string> {
+async function buildTeamLeaderLookup(tenantSlug: string): Promise<Map<string, string>> {
   const lookup = new Map<string, string>();
-  const teamControl = loadTeamControl();
+  const teamControl = await loadTeamControl(tenantSlug);
   if (!teamControl) return lookup;
   for (const t of teamControl.teams) {
     if (t.memberEmail && t.teamLeaderEmail) {
@@ -41,8 +43,9 @@ function stripTeamLeader(row: ScheduleRow): ScheduleRow {
 }
 
 export async function GET() {
-  const schedule = await loadSchedule();
-  const lookup = buildTeamLeaderLookup();
+  const slug = await getTenantSlug();
+  const schedule = await loadSchedule(slug);
+  const lookup = await buildTeamLeaderLookup(slug);
   const decorated = decorateWithTeamLeader(schedule, lookup);
   return NextResponse.json(decorated, {
     headers: { 'Cache-Control': 'no-store, no-cache, must-revalidate' },
@@ -51,22 +54,27 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   try {
+    const slug = await getTenantSlug();
     const { action, userName, userEmail } = await req.json() as {
       action: string;
       userName: string;
       userEmail: string;
     };
 
+    // Clear schedule requires admin role
+    const roleCheck = await checkRole(slug, userEmail, 'admin');
+    if (!roleCheck.ok) return roleCheck.response;
+
     if (action !== 'clear') {
       return NextResponse.json({ error: 'Unknown action' }, { status: 400 });
     }
 
-    const current = await loadSchedule();
+    const current = await loadSchedule(slug);
     const rowCount = current.length;
 
-    await clearSchedule();
+    await clearSchedule(slug);
 
-    await addActivity({
+    await addActivity(slug, {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'schedule_clear',
@@ -84,6 +92,7 @@ export async function POST(req: NextRequest) {
 
 export async function PUT(req: NextRequest) {
   try {
+    const slug = await getTenantSlug();
     const { index, row, userName, userEmail } = await req.json() as {
       index: number;
       row: ScheduleRow;
@@ -91,15 +100,19 @@ export async function PUT(req: NextRequest) {
       userEmail: string;
     };
 
+    // Edit schedule rows requires admin role
+    const roleCheck = await checkRole(slug, userEmail, 'admin');
+    if (!roleCheck.ok) return roleCheck.response;
+
     if (typeof index !== 'number' || !row) {
       return NextResponse.json({ error: 'Missing index or row' }, { status: 400 });
     }
 
     // Strip teamLeader before persisting — it's computed on read, never stored.
     const cleanRow = stripTeamLeader(row);
-    const schedule = await updateScheduleRow(index, cleanRow);
+    const schedule = await updateScheduleRow(slug, index, cleanRow);
 
-    await addActivity({
+    await addActivity(slug, {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'schedule_edit',
@@ -108,7 +121,7 @@ export async function PUT(req: NextRequest) {
       detail: `Edited row ${index}: ${cleanRow.firstName} ${cleanRow.surname} — ${cleanRow.storeId} ${cleanRow.storeName} (${cleanRow.cycle})`,
     });
 
-    const lookup = buildTeamLeaderLookup();
+    const lookup = await buildTeamLeaderLookup(slug);
     return NextResponse.json(decorateWithTeamLeader(schedule, lookup));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';
@@ -118,26 +131,31 @@ export async function PUT(req: NextRequest) {
 
 export async function DELETE(req: NextRequest) {
   try {
+    const slug = await getTenantSlug();
     const { index, userName, userEmail } = await req.json() as {
       index: number;
       userName: string;
       userEmail: string;
     };
 
+    // Delete schedule rows requires admin role
+    const roleCheck = await checkRole(slug, userEmail, 'admin');
+    if (!roleCheck.ok) return roleCheck.response;
+
     if (typeof index !== 'number') {
       return NextResponse.json({ error: 'Missing index' }, { status: 400 });
     }
 
     // Capture row detail before deletion for the activity log
-    const current = await loadSchedule();
+    const current = await loadSchedule(slug);
     const row = current[index];
     const detail = row
       ? `Deleted row ${index}: ${row.firstName} ${row.surname} — ${row.storeId} ${row.storeName} (${row.cycle})`
       : `Deleted row ${index}`;
 
-    const schedule = await deleteScheduleRow(index);
+    const schedule = await deleteScheduleRow(slug, index);
 
-    await addActivity({
+    await addActivity(slug, {
       id: crypto.randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'schedule_delete',
@@ -146,7 +164,7 @@ export async function DELETE(req: NextRequest) {
       detail,
     });
 
-    const lookup = buildTeamLeaderLookup();
+    const lookup = await buildTeamLeaderLookup(slug);
     return NextResponse.json(decorateWithTeamLeader(schedule, lookup));
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error';

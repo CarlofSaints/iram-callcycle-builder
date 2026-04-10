@@ -13,33 +13,27 @@ export interface ActivityEntry {
 }
 
 const MAX_ENTRIES = 1000;
-const BLOB_KEY = 'activity-log.json';
-const LOCAL_FILE = path.join(process.cwd(), 'data', 'activityLog.json');
 
-/**
- * Load activity log.
- *
- * IMPORTANT: no module-level in-memory cache. Serverless has no shared memory
- * across containers, so caching across requests causes stale-read bugs when
- * container A writes blob and container B handles the next GET with a stale
- * cache. The blob is the only reliable source of truth — always read from it.
- */
-export async function loadActivityLog(): Promise<ActivityEntry[]> {
-  // Local dev: read from local file (no Blob in dev)
+function blobKey(tenantSlug: string) { return `${tenantSlug}/activity-log.json`; }
+function localFile(tenantSlug: string) { return path.join(process.cwd(), 'data', `${tenantSlug}-activityLog.json`); }
+const LEGACY_LOCAL = path.join(process.cwd(), 'data', 'activityLog.json');
+
+export async function loadActivityLog(tenantSlug: string): Promise<ActivityEntry[]> {
   if (!process.env.VERCEL) {
-    try {
-      if (fsSync.existsSync(LOCAL_FILE)) {
-        const raw = await fs.readFile(LOCAL_FILE, 'utf-8');
-        return JSON.parse(raw) as ActivityEntry[];
-      }
-    } catch {}
+    const files = [localFile(tenantSlug), LEGACY_LOCAL];
+    for (const f of files) {
+      try {
+        if (fsSync.existsSync(f)) {
+          const raw = await fs.readFile(f, 'utf-8');
+          return JSON.parse(raw) as ActivityEntry[];
+        }
+      } catch { /* continue */ }
+    }
     return [];
   }
 
-  // Production: ALWAYS read fresh from blob via SDK get() helper —
-  // list()+fetch(url) does NOT work for private stores (returns 403).
   try {
-    const result = await get(BLOB_KEY, { access: 'private', useCache: false });
+    const result = await get(blobKey(tenantSlug), { access: 'private', useCache: false });
     if (result && result.statusCode === 200) {
       const text = await new Response(result.stream).text();
       return JSON.parse(text) as ActivityEntry[];
@@ -51,44 +45,36 @@ export async function loadActivityLog(): Promise<ActivityEntry[]> {
   return [];
 }
 
-/**
- * Append an activity entry. Swallows errors so that a failing blob write
- * never breaks the calling operation (uploads, logins, etc.).
- */
-export async function addActivity(entry: ActivityEntry): Promise<void> {
+export async function addActivity(tenantSlug: string, entry: ActivityEntry): Promise<void> {
   try {
-    const log = await loadActivityLog();
+    const log = await loadActivityLog(tenantSlug);
     log.unshift(entry);
     if (log.length > MAX_ENTRIES) log.splice(MAX_ENTRIES);
-    await saveActivityLog(log);
+    await saveActivityLog(tenantSlug, log);
   } catch (err) {
     console.error('[activityLog] addActivity failed:', err instanceof Error ? err.message : err);
   }
 }
 
-async function saveActivityLog(log: ActivityEntry[]): Promise<void> {
+async function saveActivityLog(tenantSlug: string, log: ActivityEntry[]): Promise<void> {
   const json = JSON.stringify(log);
 
-  // Canonical durable store: Vercel Blob. Write FIRST so failures can't be
-  // masked by an updated in-memory cache (we no longer have one anyway).
   try {
-    await put(BLOB_KEY, json, {
-      // Blob store is provisioned with private access — must match.
+    await put(blobKey(tenantSlug), json, {
       access: 'private',
       contentType: 'application/json',
       allowOverwrite: true,
       addRandomSuffix: false,
     });
   } catch (err) {
-    // Swallow — caller (addActivity) already catches, but log for observability
     console.error('[activityLog] Blob write failed:', err instanceof Error ? err.message : err);
   }
 
-  // Local dev: also write to data/ file
   try {
-    const dir = path.dirname(LOCAL_FILE);
+    const f = localFile(tenantSlug);
+    const dir = path.dirname(f);
     if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true });
-    await fs.writeFile(LOCAL_FILE, json, 'utf-8');
+    await fs.writeFile(f, json, 'utf-8');
   } catch {
     // Vercel read-only FS — expected
   }

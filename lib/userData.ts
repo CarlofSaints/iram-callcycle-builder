@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { put, get } from '@vercel/blob';
 
 export interface User {
   id: string;
@@ -8,104 +9,85 @@ export interface User {
   email: string;
   password: string;
   isAdmin: boolean;
+  role: 'admin' | 'manager' | 'user';
   forcePasswordChange: boolean;
   firstLoginAt: string | null;
   createdAt: string;
 }
 
-const FILE = path.join(process.cwd(), 'data', 'users.json');
-const TMP_FILE = '/tmp/iram_users.json';
+/**
+ * Load users for a specific tenant.
+ * Now async — reads from Vercel Blob with tenant prefix.
+ * NO module-level cache (multi-container serverless safety).
+ */
+export async function loadUsers(tenantSlug: string): Promise<User[]> {
+  const blobKey = `${tenantSlug}/users.json`;
 
-let _cache: User[] | null = null;
-
-export function loadUsers(): User[] {
-  if (_cache !== null) return _cache;
-
-  // Vercel: try /tmp first (survives across requests in same container)
-  if (process.env.VERCEL) {
-    try {
-      if (fs.existsSync(TMP_FILE)) {
-        _cache = JSON.parse(fs.readFileSync(TMP_FILE, 'utf-8'));
-        return _cache!;
-      }
-    } catch {}
+  // Local dev: read from local data/ file
+  if (!process.env.VERCEL) {
+    const localFile = path.join(process.cwd(), 'data', `${tenantSlug}-users.json`);
+    // Fallback: old single-tenant file
+    const legacyFile = path.join(process.cwd(), 'data', 'users.json');
+    for (const f of [localFile, legacyFile]) {
+      try {
+        if (fs.existsSync(f)) {
+          const users = JSON.parse(fs.readFileSync(f, 'utf-8')) as User[];
+          // Backfill role from isAdmin for legacy data
+          return users.map(u => ({
+            ...u,
+            role: u.role || (u.isAdmin ? 'admin' : 'user'),
+          }));
+        }
+      } catch { /* continue */ }
+    }
+    return [];
   }
 
-  const env = process.env.IRAM_CC_USERS_JSON;
-  if (process.env.VERCEL && env) {
-    try {
-      _cache = JSON.parse(env);
-      try { fs.writeFileSync(TMP_FILE, env); } catch {}
-      return _cache!;
-    } catch {}
-  }
-
-  if (fs.existsSync(FILE)) {
-    try {
-      _cache = JSON.parse(fs.readFileSync(FILE, 'utf-8'));
-      return _cache!;
-    } catch {}
-  }
-
-  if (env) {
-    try {
-      _cache = JSON.parse(env);
-      return _cache!;
-    } catch {}
+  // Production: read from Blob
+  try {
+    const result = await get(blobKey, { access: 'private', useCache: false });
+    if (result && result.statusCode === 200) {
+      const text = await new Response(result.stream).text();
+      const users = JSON.parse(text) as User[];
+      return users.map(u => ({
+        ...u,
+        role: u.role || (u.isAdmin ? 'admin' : 'user'),
+      }));
+    }
+  } catch (err) {
+    console.error(`[userData] Blob read failed for ${blobKey}:`, err instanceof Error ? err.message : err);
   }
 
   return [];
 }
 
-export async function saveUsers(users: User[]) {
-  _cache = users;
+/**
+ * Save users for a specific tenant to Vercel Blob.
+ */
+export async function saveUsers(tenantSlug: string, users: User[]): Promise<void> {
+  const blobKey = `${tenantSlug}/users.json`;
   const json = JSON.stringify(users, null, 2);
 
-  // Vercel: write to /tmp for container-level persistence
-  if (process.env.VERCEL) {
-    try { fs.writeFileSync(TMP_FILE, json); } catch {}
-  }
-
+  // Blob write
   try {
-    const dir = path.dirname(FILE);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(FILE, json);
-    if (!process.env.VERCEL) return;
-  } catch {
-    // Vercel: read-only filesystem, fall through to API update
-  }
-
-  const token = process.env.VERCEL_TOKEN;
-  const projectId = process.env.VERCEL_PROJECT_ID;
-  if (token && projectId) {
-    try {
-      await updateVercelEnvVar(token, projectId, 'IRAM_CC_USERS_JSON', json);
-    } catch (err) {
-      console.error('[userData] Vercel env var update failed:', err);
-    }
-  }
-}
-
-async function updateVercelEnvVar(token: string, projectId: string, key: string, value: string) {
-  const listRes = await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  if (!listRes.ok) return;
-  const { envs } = await listRes.json() as { envs: { id: string; key: string }[] };
-  const envRecord = envs.find(e => e.key === key);
-
-  if (!envRecord) {
-    await fetch(`https://api.vercel.com/v9/projects/${projectId}/env`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, value, type: 'plain', target: ['production', 'preview', 'development'] }),
+    await put(blobKey, json, {
+      access: 'private',
+      contentType: 'application/json',
+      allowOverwrite: true,
+      addRandomSuffix: false,
     });
-    return;
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    throw new Error(`Failed to persist users to Vercel Blob: ${msg}`);
   }
 
-  await fetch(`https://api.vercel.com/v9/projects/${projectId}/env/${envRecord.id}`, {
-    method: 'PATCH',
-    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ value }),
-  });
+  // Local dev: also write to local file
+  try {
+    const localFile = path.join(process.cwd(), 'data', `${tenantSlug}-users.json`);
+    const dir = path.dirname(localFile);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(localFile, json);
+  } catch {
+    // Vercel read-only FS — expected
+  }
 }

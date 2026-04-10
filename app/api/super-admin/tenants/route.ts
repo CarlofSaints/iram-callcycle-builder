@@ -1,0 +1,104 @@
+import { NextRequest, NextResponse } from 'next/server';
+import bcrypt from 'bcryptjs';
+import { randomUUID } from 'crypto';
+import { loadTenants, saveTenants, TenantConfig } from '@/lib/tenantConfig';
+import { loadSuperAdmins } from '@/lib/superAdminData';
+import { saveUsers, User } from '@/lib/userData';
+import { put } from '@vercel/blob';
+
+export const dynamic = 'force-dynamic';
+
+/**
+ * Verify the request comes from a super-admin.
+ * Reads the x-super-admin-email header set by the client.
+ */
+async function verifySuperAdmin(req: NextRequest): Promise<boolean> {
+  const email = req.headers.get('x-super-admin-email');
+  if (!email) return false;
+  const admins = await loadSuperAdmins();
+  return admins.some(a => a.email.toLowerCase() === email.toLowerCase());
+}
+
+export async function GET(req: NextRequest) {
+  if (!await verifySuperAdmin(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const tenants = await loadTenants();
+  return NextResponse.json(tenants, {
+    headers: { 'Cache-Control': 'no-store' },
+  });
+}
+
+export async function POST(req: NextRequest) {
+  if (!await verifySuperAdmin(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const body = await req.json();
+  const {
+    name, slug, subtitle, primaryColor, secondaryColor, accentColor,
+    logoMaxWidth, logoMaxHeight, domains,
+    adminEmail, adminName, adminPassword,
+  } = body;
+
+  if (!name || !slug || !primaryColor || !adminEmail || !adminPassword) {
+    return NextResponse.json({ error: 'Missing required fields' }, { status: 400 });
+  }
+
+  const tenants = await loadTenants();
+
+  // Check slug uniqueness
+  if (tenants.some(t => t.slug === slug)) {
+    return NextResponse.json({ error: 'Tenant slug already exists' }, { status: 409 });
+  }
+
+  // Create tenant config
+  const tenant: TenantConfig = {
+    id: randomUUID(),
+    slug,
+    name,
+    subtitle: subtitle || 'Call Cycle Builder',
+    primaryColor,
+    secondaryColor: secondaryColor || undefined,
+    accentColor: accentColor || undefined,
+    logoFilename: '', // Will be set if logo is uploaded separately
+    logoMaxWidth: logoMaxWidth || 200,
+    logoMaxHeight: logoMaxHeight || 60,
+    domains: domains || [`${slug}.callcycle.fieldgoose.outerjoin.co.za`],
+    active: true,
+    createdAt: new Date().toISOString(),
+  };
+
+  // Save tenant
+  tenants.push(tenant);
+  await saveTenants(tenants);
+
+  // Seed admin user for this tenant
+  const hashed = await bcrypt.hash(adminPassword, 10);
+  const adminUser: User = {
+    id: randomUUID(),
+    name: adminName || 'Admin',
+    surname: '',
+    email: adminEmail,
+    password: hashed,
+    isAdmin: true,
+    role: 'admin',
+    forcePasswordChange: true,
+    firstLoginAt: null,
+    createdAt: new Date().toISOString(),
+  };
+  await saveUsers(slug, [adminUser]);
+
+  // Create empty schedule and activity log
+  await put(`${slug}/schedule.json`, '[]', {
+    access: 'private', contentType: 'application/json',
+    allowOverwrite: true, addRandomSuffix: false,
+  });
+  await put(`${slug}/activity-log.json`, '[]', {
+    access: 'private', contentType: 'application/json',
+    allowOverwrite: true, addRandomSuffix: false,
+  });
+
+  return NextResponse.json({ ok: true, tenant }, { status: 201 });
+}

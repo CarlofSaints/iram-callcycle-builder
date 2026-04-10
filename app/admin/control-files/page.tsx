@@ -38,7 +38,7 @@ interface TeamStatus {
 }
 
 export default function ControlFilesPage() {
-  const { session, loading, logout } = useAuth(true);
+  const { session, loading, logout } = useAuth('admin');
   const [toast, setToast] = useState<ToastData | null>(null);
 
   // Store control
@@ -59,11 +59,6 @@ export default function ControlFilesPage() {
   const [confirmModal, setConfirmModal] = useState<'store' | 'team' | null>(null);
   const [keepExisting, setKeepExisting] = useState(true);
 
-  // Perigee template (legacy reference data)
-  const [templateFile, setTemplateFile] = useState<File | null>(null);
-  const [templateUploading, setTemplateUploading] = useState(false);
-  const [templateResult, setTemplateResult] = useState<{ ok?: boolean; error?: string; stores?: number; users?: number; teams?: number } | null>(null);
-  const templateInputRef = useRef<HTMLInputElement>(null);
 
   const notify = (message: string, type: 'success' | 'error' = 'success') =>
     setToast({ message, type });
@@ -184,28 +179,6 @@ export default function ControlFilesPage() {
     setConfirmModal(null);
   }
 
-  async function handleTemplateUpload() {
-    if (!templateFile || !session) return;
-    setTemplateUploading(true);
-    setTemplateResult(null);
-    try {
-      const formData = new FormData();
-      formData.append('file', templateFile);
-      const res = await fetch('/api/references', { method: 'POST', body: formData });
-      const data = await res.json();
-      setTemplateResult(data);
-      if (data.ok) {
-        notify(`Template loaded: ${data.stores} stores, ${data.users} users, ${data.teams} teams`);
-        setTemplateFile(null);
-      } else {
-        notify(data.error || 'Upload failed', 'error');
-      }
-    } catch (err) {
-      notify(`Upload error: ${err instanceof Error ? err.message : 'Network error'}`, 'error');
-    } finally {
-      setTemplateUploading(false);
-    }
-  }
 
   function downloadStoreControl() {
     window.open('/api/control-files/stores', '_blank');
@@ -254,7 +227,7 @@ export default function ControlFilesPage() {
                 type="checkbox"
                 checked={keepExisting}
                 onChange={e => setKeepExisting(e.target.checked)}
-                className="mt-0.5 h-4 w-4 accent-[#7CC042] rounded"
+                className="mt-0.5 h-4 w-4 accent-[var(--color-primary)] rounded"
               />
               <span className="text-sm text-gray-700">
                 Keep lines that do not exist in my control file
@@ -274,7 +247,7 @@ export default function ControlFilesPage() {
               </button>
               <button
                 onClick={onConfirmUpload}
-                className="flex-1 px-4 py-2 text-sm font-bold text-white bg-[#7CC042] hover:bg-[#5a9830] rounded-lg transition-colors"
+                className="flex-1 px-4 py-2 text-sm font-bold text-white bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] rounded-lg transition-colors"
               >
                 Proceed
               </button>
@@ -284,7 +257,7 @@ export default function ControlFilesPage() {
       )}
 
       <main className="max-w-screen-lg mx-auto px-4 py-8 flex flex-col gap-8">
-        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-4">
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4">
           <h1 className="text-xl font-bold text-gray-900">Control Files</h1>
           <p className="text-sm text-gray-500 mt-1">Upload Perigee store and team control files to populate reference data</p>
         </div>
@@ -319,7 +292,7 @@ export default function ControlFilesPage() {
 
           <div
             className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer
-              ${storeDragOver ? 'border-[#7CC042] bg-green-50' : 'border-gray-300 hover:border-[#7CC042]'}`}
+              ${storeDragOver ? 'border-[var(--color-primary)] bg-[var(--color-primary-lighter)]' : 'border-gray-300 hover:border-[var(--color-primary)]'}`}
             onClick={() => storeInputRef.current?.click()}
             onDragOver={e => { e.preventDefault(); setStoreDragOver(true); }}
             onDragLeave={() => setStoreDragOver(false)}
@@ -354,7 +327,7 @@ export default function ControlFilesPage() {
             <button
               onClick={onStoreUploadClick}
               disabled={!storeFile || storeUploading}
-              className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
               {storeUploading ? 'Uploading...' : 'Upload Store Control'}
             </button>
@@ -421,7 +394,7 @@ export default function ControlFilesPage() {
 
           <div
             className={`border-2 border-dashed rounded-xl p-6 text-center transition-colors cursor-pointer
-              ${teamDragOver ? 'border-[#7CC042] bg-green-50' : 'border-gray-300 hover:border-[#7CC042]'}`}
+              ${teamDragOver ? 'border-[var(--color-primary)] bg-[var(--color-primary-lighter)]' : 'border-gray-300 hover:border-[var(--color-primary)]'}`}
             onClick={() => teamInputRef.current?.click()}
             onDragOver={e => { e.preventDefault(); setTeamDragOver(true); }}
             onDragLeave={() => setTeamDragOver(false)}
@@ -456,7 +429,7 @@ export default function ControlFilesPage() {
             <button
               onClick={onTeamUploadClick}
               disabled={!teamFile || teamUploading}
-              className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
               {teamUploading ? 'Uploading...' : 'Upload Team Control'}
             </button>
@@ -471,45 +444,6 @@ export default function ControlFilesPage() {
           </div>
         </section>
 
-        {/* Perigee Template Upload */}
-        <section className="bg-white rounded-xl shadow-sm border border-gray-100 p-6 flex flex-col gap-4">
-          <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide">Perigee Call Schedule Template</h2>
-          <p className="text-xs text-gray-500">
-            Upload an updated Perigee Call Schedule template if the sheet structure has changed.
-            This only provides the export format — store, user, and team data come from the control files above.
-          </p>
-
-          <div className="flex items-center gap-3">
-            <button
-              onClick={() => templateInputRef.current?.click()}
-              className="text-sm border border-gray-300 hover:bg-gray-50 px-4 py-2 rounded-lg transition-colors"
-            >
-              {templateFile ? templateFile.name : 'Choose Template File'}
-            </button>
-            <input
-              ref={templateInputRef}
-              type="file"
-              accept=".xlsx,.xls,.xlsm"
-              className="hidden"
-              onChange={e => { if (e.target.files?.[0]) setTemplateFile(e.target.files[0]); }}
-            />
-            <button
-              onClick={handleTemplateUpload}
-              disabled={!templateFile || templateUploading}
-              className="bg-gray-700 hover:bg-gray-800 disabled:opacity-50 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
-            >
-              {templateUploading ? 'Processing...' : 'Upload Template'}
-            </button>
-          </div>
-
-          {templateResult && (
-            <div className={`rounded-lg p-3 text-sm ${templateResult.ok ? 'bg-green-50 border border-green-200 text-green-700' : 'bg-red-50 border border-red-200 text-red-700'}`}>
-              {templateResult.ok
-                ? `Reference data loaded: ${templateResult.stores} stores, ${templateResult.users} users, ${templateResult.teams} teams`
-                : templateResult.error}
-            </div>
-          )}
-        </section>
       </main>
     </div>
   );

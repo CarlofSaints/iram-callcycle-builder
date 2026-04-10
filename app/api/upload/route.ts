@@ -6,12 +6,17 @@ import { mergeIntoSchedule } from '@/lib/scheduleData';
 import { addActivity } from '@/lib/activityLogData';
 import { sendUploadNotification } from '@/lib/email';
 import { loadUsers } from '@/lib/userData';
+import { getTenantSlug } from '@/lib/getTenantSlug';
+import { getTenantEmailConfig } from '@/lib/getTenantConfig';
 import { randomUUID } from 'crypto';
 
 const VALID_PARSE_MODES: ParseMode[] = ['team-leader', 'user', 'user-4wk', 'auto'];
 
 export async function POST(req: NextRequest) {
   try {
+    const slug = await getTenantSlug();
+    const tenant = await getTenantEmailConfig();
+
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const userName = formData.get('userName') as string || 'Unknown';
@@ -29,8 +34,8 @@ export async function POST(req: NextRequest) {
     }
 
     const buffer = Buffer.from(await file.arrayBuffer());
-    const references = await loadReferences();
-    const teamControlData = loadTeamControl();
+    const references = await loadReferences(slug);
+    const teamControlData = await loadTeamControl(slug);
     const teamControlEntries = teamControlData?.teams;
 
     // Parse the file
@@ -46,7 +51,7 @@ export async function POST(req: NextRequest) {
 
     if (entries.length === 0) {
       // Send failure email
-      const adminEmails = loadUsers().filter(u => u.isAdmin).map(u => u.email);
+      const adminEmails = (await loadUsers(slug)).filter(u => u.isAdmin || u.role === 'admin').map(u => u.email);
       const notifyEmails = [...new Set([...adminEmails, userEmail, ...(ccEmail ? [ccEmail] : [])])].filter(Boolean);
       try {
         await sendUploadNotification(notifyEmails, {
@@ -54,7 +59,7 @@ export async function POST(req: NextRequest) {
           format, entriesFound: 0, rowsAdded: 0, rowsUpdated: 0, totalRows: 0,
           warnings, status: 'failed',
           errorMessage: 'No data could be extracted from the file.',
-        });
+        }, tenant);
       } catch (emailErr) {
         console.error('[upload] Failure email failed:', emailErr);
       }
@@ -68,13 +73,14 @@ export async function POST(req: NextRequest) {
 
     // Merge into schedule
     const result = await mergeIntoSchedule(
+      slug,
       entries,
       userEmail,
       references.stores.map(s => ({ storeCode: s.storeCode, channel: s.channel })),
     );
 
     // Log activity
-    await addActivity({
+    await addActivity(slug, {
       id: randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'upload',
@@ -88,7 +94,7 @@ export async function POST(req: NextRequest) {
     const uploadStatus: 'success' | 'partial' = allWarnings.length > 0 ? 'partial' : 'success';
 
     // Send email notification
-    const adminEmails = loadUsers().filter(u => u.isAdmin).map(u => u.email);
+    const adminEmails = (await loadUsers(slug)).filter(u => u.isAdmin || u.role === 'admin').map(u => u.email);
     const notifyEmails = [...new Set([...adminEmails, userEmail, ...(ccEmail ? [ccEmail] : [])])].filter(Boolean);
 
     try {
@@ -104,7 +110,7 @@ export async function POST(req: NextRequest) {
         totalRows: result.totalRows,
         warnings: allWarnings,
         status: uploadStatus,
-      });
+      }, tenant);
     } catch (err) {
       console.error('[upload] Email notification failed:', err);
     }

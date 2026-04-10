@@ -31,7 +31,7 @@ function Toast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
 }
 
 export default function AdminUsersPage() {
-  const { session, loading, logout } = useAuth(true);
+  const { session, loading, logout } = useAuth('admin');
   const [users, setUsers] = useState<User[]>([]);
   const [toast, setToast] = useState<ToastData | null>(null);
 
@@ -150,7 +150,7 @@ export default function AdminUsersPage() {
       {toast && <Toast toast={toast} onClose={() => setToast(null)} />}
 
       <main className="max-w-screen-lg mx-auto px-4 py-8 flex flex-col gap-8">
-        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-4 flex items-center gap-3">
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4 flex items-center gap-3">
           <h1 className="text-xl font-bold text-gray-900">User Management</h1>
         </div>
 
@@ -161,23 +161,23 @@ export default function AdminUsersPage() {
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">First Name</label>
               <input value={addName} onChange={e => setAddName(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Surname</label>
               <input value={addSurname} onChange={e => setAddSurname(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Email</label>
               <input type="email" value={addEmail} onChange={e => setAddEmail(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs text-gray-500 font-medium">Password</label>
               <div className="relative">
                 <input type={showAddPw ? 'text' : 'password'} value={addPw} onChange={e => setAddPw(e.target.value)} required
-                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
                 <button type="button" onClick={() => setShowAddPw(v => !v)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
                   {showAddPw ? 'Hide' : 'Show'}
@@ -187,23 +187,23 @@ export default function AdminUsersPage() {
             <div className="sm:col-span-2 flex flex-col gap-3">
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                 <input type="checkbox" checked={addAdmin} onChange={e => setAddAdmin(e.target.checked)}
-                  className="accent-[#7CC042]" />
+                  className="accent-[var(--color-primary)]" />
                 Admin user
               </label>
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                 <input type="checkbox" checked={addForcePwChange} onChange={e => setAddForcePwChange(e.target.checked)}
-                  className="accent-[#7CC042]" />
+                  className="accent-[var(--color-primary)]" />
                 Force password change on first login
               </label>
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                 <input type="checkbox" checked={sendWelcome} onChange={e => setSendWelcome(e.target.checked)}
-                  className="accent-[#7CC042]" />
+                  className="accent-[var(--color-primary)]" />
                 Send welcome email
               </label>
             </div>
             <div className="sm:col-span-2">
               <button type="submit" disabled={addLoading}
-                className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-6 py-2 rounded-lg transition-colors">
+                className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-6 py-2 rounded-lg transition-colors">
                 {addLoading ? 'Creating...' : 'Create User'}
               </button>
             </div>
@@ -263,24 +263,24 @@ export default function AdminUsersPage() {
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 font-medium">First Name</label>
                   <input value={editName} onChange={e => setEditName(e.target.value)} required
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <label className="text-xs text-gray-500 font-medium">Surname</label>
                   <input value={editSurname} onChange={e => setEditSurname(e.target.value)} required
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
                 </div>
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 font-medium">Email</label>
                 <input type="email" value={editEmail} onChange={e => setEditEmail(e.target.value)} required
-                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]" />
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
               </div>
               <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 font-medium">New Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></label>
                 <div className="relative">
                   <input type={showEditPw ? 'text' : 'password'} value={editPw} onChange={e => setEditPw(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#7CC042]"
+                    className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
                     placeholder="New password..." />
                   <button type="button" onClick={() => setShowEditPw(v => !v)}
                     className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
@@ -290,19 +290,19 @@ export default function AdminUsersPage() {
               </div>
               <div className="flex flex-col gap-2">
                 <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input type="checkbox" checked={editAdmin} onChange={e => setEditAdmin(e.target.checked)} className="accent-[#7CC042]" />
+                  <input type="checkbox" checked={editAdmin} onChange={e => setEditAdmin(e.target.checked)} className="accent-[var(--color-primary)]" />
                   Admin user
                 </label>
                 {editPw && (
                   <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                    <input type="checkbox" checked={sendReset} onChange={e => setSendReset(e.target.checked)} className="accent-[#7CC042]" />
+                    <input type="checkbox" checked={sendReset} onChange={e => setSendReset(e.target.checked)} className="accent-[var(--color-primary)]" />
                     Send password reset email
                   </label>
                 )}
               </div>
               <div className="flex gap-3 pt-2">
                 <button type="submit" disabled={editLoading}
-                  className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors">
+                  className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors">
                   {editLoading ? 'Saving...' : 'Save Changes'}
                 </button>
                 <button type="button" onClick={() => setEditUser(null)}

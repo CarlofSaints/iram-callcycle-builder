@@ -4,6 +4,9 @@ import ExcelJS from 'exceljs';
 import { TeamControlEntry } from '@/lib/types';
 import { loadTeamControl, saveTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
+import { getTenantSlug } from '@/lib/getTenantSlug';
+import { getTenantEmailConfig } from '@/lib/getTenantConfig';
+import { hexToArgb } from '@/lib/tenantConfig';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
@@ -24,6 +27,7 @@ function parseLeaderEmail(raw: string): string {
 
 export async function POST(req: NextRequest) {
   try {
+    const slug = await getTenantSlug();
     const formData = await req.formData();
     const file = formData.get('file') as File | null;
     const userName = formData.get('userName') as string || 'Unknown';
@@ -92,7 +96,7 @@ export async function POST(req: NextRequest) {
     // Merge or replace
     let finalTeams: TeamControlEntry[];
     if (mode === 'merge') {
-      const existing = loadTeamControl();
+      const existing = await loadTeamControl(slug);
       if (existing && existing.teams.length > 0) {
         const teamMap = new Map<string, TeamControlEntry>();
         for (const t of existing.teams) {
@@ -115,13 +119,13 @@ export async function POST(req: NextRequest) {
       t.teamName.toUpperCase() === 'UNKNOWN' || !t.teamName
     ).length;
 
-    await saveTeamControl({
+    await saveTeamControl(slug, {
       teams: finalTeams,
       uploadedAt: new Date().toISOString(),
       uploadedBy: userEmail || userName,
     });
 
-    await addActivity({
+    await addActivity(slug, {
       id: randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'control_file_upload',
@@ -144,11 +148,13 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: Request) {
+  const slug = await getTenantSlug();
+  const tenant = await getTenantEmailConfig();
   const url = new URL(req.url);
   const status = url.searchParams.get('status');
   const exceptions = url.searchParams.get('exceptions');
 
-  const data = loadTeamControl();
+  const data = await loadTeamControl(slug);
 
   if (status === 'true') {
     if (!data) {
@@ -189,7 +195,7 @@ export async function GET(req: Request) {
   const sheet = workbook.addWorksheet('Teams');
 
   const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-  const COL_GREEN = 'FF7CC042';
+  const COL_BRAND = hexToArgb(tenant.primaryColor);
 
   sheet.columns = [
     { header: 'TEAM NAME', key: 'teamName', width: 20 },
@@ -202,7 +208,7 @@ export async function GET(req: Request) {
 
   const headerRow = sheet.getRow(1);
   headerRow.eachCell(cell => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_GREEN } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_BRAND } };
     cell.font = headerFont;
   });
 
@@ -220,7 +226,7 @@ export async function GET(req: Request) {
   const buf = await workbook.xlsx.writeBuffer();
   const date = new Date().toISOString().split('T')[0];
   const label = exceptions === 'true' ? 'Exceptions' : 'Team Control';
-  const filename = `iRam - ${label} - ${date}.xlsx`;
+  const filename = `${tenant.name} - ${label} - ${date}.xlsx`;
 
   return new NextResponse(buf as ArrayBuffer, {
     headers: {

@@ -24,7 +24,7 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function ActivityPage() {
-  const { session, loading, logout } = useAuth(true);
+  const { session, loading, logout } = useAuth('manager');
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
 
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function ActivityPage() {
       <Header session={session} onLogout={logout} />
 
       <main className="max-w-screen-lg mx-auto px-4 py-8 flex flex-col gap-6">
-        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-4">
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4">
           <h1 className="text-xl font-bold text-gray-900">Activity Log</h1>
         </div>
 

@@ -5,22 +5,19 @@ import { put, get } from '@vercel/blob';
 import { ScheduleRow, ParsedEntry, UploadResult } from './types';
 
 /**
- * Canonical schedule persistence: Vercel Blob (private store).
+ * Canonical schedule persistence: Vercel Blob (private store) with tenant prefix.
  *
  * IMPORTANT: no module-level in-memory cache. Serverless has no shared memory
- * across containers, so caching across requests causes stale-read bugs when
- * container A writes blob and container B handles the next GET with a stale
- * cache. The blob is the only reliable source of truth — always read from it.
+ * across containers, so caching across requests causes stale-read bugs.
  */
 
-const LOCAL_FILE = path.join(process.cwd(), 'data', 'schedule.json');
-const BLOB_KEY = 'schedule.json';
+function blobKey(tenantSlug: string) { return `${tenantSlug}/schedule.json`; }
+function localFile(tenantSlug: string) { return path.join(process.cwd(), 'data', `${tenantSlug}-schedule.json`); }
+const LEGACY_LOCAL = path.join(process.cwd(), 'data', 'schedule.json');
 
-async function readFromBlob(): Promise<ScheduleRow[] | null> {
-  // Use the SDK's get() helper — it automatically attaches the BLOB auth token
-  // for private stores. list()+fetch(url) returns 403 without the signed token.
+async function readFromBlob(tenantSlug: string): Promise<ScheduleRow[] | null> {
   try {
-    const result = await get(BLOB_KEY, { access: 'private', useCache: false });
+    const result = await get(blobKey(tenantSlug), { access: 'private', useCache: false });
     if (!result || result.statusCode !== 200) return null;
     const text = await new Response(result.stream).text();
     return JSON.parse(text) as ScheduleRow[];
@@ -30,37 +27,36 @@ async function readFromBlob(): Promise<ScheduleRow[] | null> {
   }
 }
 
-export async function loadSchedule(): Promise<ScheduleRow[]> {
-  // Local dev: read from local file (no Blob in dev)
+export async function loadSchedule(tenantSlug: string): Promise<ScheduleRow[]> {
   if (!process.env.VERCEL) {
-    try {
-      if (fsSync.existsSync(LOCAL_FILE)) {
-        const raw = await fs.readFile(LOCAL_FILE, 'utf-8');
-        return JSON.parse(raw) as ScheduleRow[];
-      }
-    } catch (err) {
-      console.error('[scheduleData] Local file read failed:', err);
+    const files = [localFile(tenantSlug), LEGACY_LOCAL];
+    for (const f of files) {
+      try {
+        if (fsSync.existsSync(f)) {
+          const raw = await fs.readFile(f, 'utf-8');
+          return JSON.parse(raw) as ScheduleRow[];
+        }
+      } catch { /* continue */ }
     }
     return [];
   }
 
-  // Production: ALWAYS read fresh from blob. No module cache.
-  const fromBlob = await readFromBlob();
+  const fromBlob = await readFromBlob(tenantSlug);
   return fromBlob ?? [];
 }
 
 export async function mergeIntoSchedule(
+  tenantSlug: string,
   entries: ParsedEntry[],
   uploadedBy: string,
   referenceStores: { storeCode: string; channel: string }[],
 ): Promise<UploadResult> {
-  const schedule = await loadSchedule();
+  const schedule = await loadSchedule(tenantSlug);
   const now = new Date().toISOString();
   const warnings: string[] = [];
   let rowsAdded = 0;
   let rowsUpdated = 0;
 
-  // Build store lookup for channel
   const storeLookup = new Map<string, string>();
   for (const s of referenceStores) {
     storeLookup.set(s.storeCode.toUpperCase(), s.channel);
@@ -81,7 +77,6 @@ export async function mergeIntoSchedule(
     }
 
     if (existingIdx >= 0) {
-      // Update existing row
       const existing = schedule[existingIdx];
       const daysChanged = JSON.stringify(existing.days.sort()) !== JSON.stringify(entry.days.sort());
       if (daysChanged || existing.storeName !== entry.storeName) {
@@ -98,13 +93,11 @@ export async function mergeIntoSchedule(
         };
         rowsUpdated++;
       } else {
-        // No change — mark as LIVE, but always refresh channel
         schedule[existingIdx].action = 'LIVE';
         schedule[existingIdx].uploadedAt = now;
         if (channel) schedule[existingIdx].channel = channel;
       }
     } else {
-      // New row
       schedule.push({
         userEmail: entry.userEmail,
         firstName: entry.firstName,
@@ -122,7 +115,6 @@ export async function mergeIntoSchedule(
     }
   }
 
-  // Backfill channels on ALL schedule rows (fixes rows saved before store control was loaded)
   if (storeLookup.size > 0) {
     for (const row of schedule) {
       if (!row.channel && row.storeId) {
@@ -132,44 +124,37 @@ export async function mergeIntoSchedule(
     }
   }
 
-  await saveSchedule(schedule);
+  await saveSchedule(tenantSlug, schedule);
 
   const uniqueWarnings = [...new Set(warnings)];
   return { rowsAdded, rowsUpdated, totalRows: schedule.length, warnings: uniqueWarnings };
 }
 
-export async function updateScheduleRow(index: number, row: ScheduleRow): Promise<ScheduleRow[]> {
-  const schedule = await loadSchedule();
+export async function updateScheduleRow(tenantSlug: string, index: number, row: ScheduleRow): Promise<ScheduleRow[]> {
+  const schedule = await loadSchedule(tenantSlug);
   if (index < 0 || index >= schedule.length) throw new Error('Invalid row index');
   schedule[index] = row;
-  await saveSchedule(schedule);
+  await saveSchedule(tenantSlug, schedule);
   return schedule;
 }
 
-export async function deleteScheduleRow(index: number): Promise<ScheduleRow[]> {
-  const schedule = await loadSchedule();
+export async function deleteScheduleRow(tenantSlug: string, index: number): Promise<ScheduleRow[]> {
+  const schedule = await loadSchedule(tenantSlug);
   if (index < 0 || index >= schedule.length) throw new Error('Invalid row index');
   schedule.splice(index, 1);
-  await saveSchedule(schedule);
+  await saveSchedule(tenantSlug, schedule);
   return schedule;
 }
 
-export async function clearSchedule(): Promise<void> {
-  await saveSchedule([]);
+export async function clearSchedule(tenantSlug: string): Promise<void> {
+  await saveSchedule(tenantSlug, []);
 }
 
-/**
- * Writes schedule durably. Blob write runs FIRST — on failure we throw and
- * leave the in-memory cache untouched so a failed save can never masquerade
- * as success (the illusion bug that cost us hours on store control).
- */
-export async function saveSchedule(schedule: ScheduleRow[]): Promise<void> {
+export async function saveSchedule(tenantSlug: string, schedule: ScheduleRow[]): Promise<void> {
   const json = JSON.stringify(schedule);
 
   try {
-    await put(BLOB_KEY, json, {
-      // Blob store is provisioned with private access — 'public' raises
-      // "Cannot use public access on a private store" from the SDK.
+    await put(blobKey(tenantSlug), json, {
       access: 'private',
       contentType: 'application/json',
       allowOverwrite: true,
@@ -177,18 +162,14 @@ export async function saveSchedule(schedule: ScheduleRow[]): Promise<void> {
     });
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
-    throw new Error(
-      `Failed to persist schedule to Vercel Blob: ${msg}. ` +
-      `Check that a Blob store is linked to this project (Storage tab → Connect to Project) ` +
-      `and that BLOB_READ_WRITE_TOKEN is set in environment variables.`,
-    );
+    throw new Error(`Failed to persist schedule to Vercel Blob: ${msg}`);
   }
 
-  // Blob write succeeded. Best-effort local dev file write only.
   try {
-    const dir = path.dirname(LOCAL_FILE);
+    const f = localFile(tenantSlug);
+    const dir = path.dirname(f);
     if (!fsSync.existsSync(dir)) fsSync.mkdirSync(dir, { recursive: true });
-    await fs.writeFile(LOCAL_FILE, JSON.stringify(schedule, null, 2), 'utf-8');
+    await fs.writeFile(f, JSON.stringify(schedule, null, 2), 'utf-8');
   } catch {
     // Expected on Vercel read-only FS
   }

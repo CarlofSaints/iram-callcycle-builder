@@ -6,17 +6,18 @@ import { StoreControlEntry } from '@/lib/types';
 import { loadStoreControl, saveStoreControl } from '@/lib/storeControlData';
 import { addActivity } from '@/lib/activityLogData';
 import { processStoreRows } from '@/lib/storeRowProcessor';
+import { getTenantSlug } from '@/lib/getTenantSlug';
+import { getTenantEmailConfig } from '@/lib/getTenantConfig';
+import { hexToArgb } from '@/lib/tenantConfig';
 import { randomUUID } from 'crypto';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
-// Parsing a filtered iRam store control file (~30K rows max) typically
-// completes in 5–15s. 60s gives comfortable headroom; bump toward the Pro-tier
-// 300s ceiling if a larger file ever becomes the norm.
 export const maxDuration = 60;
 
 export async function POST(req: NextRequest) {
   try {
+    const slug = await getTenantSlug();
     const contentType = req.headers.get('content-type') || '';
 
     let headers: string[];
@@ -88,7 +89,7 @@ export async function POST(req: NextRequest) {
     // Merge or replace
     let finalStores: StoreControlEntry[];
     if (mode === 'merge') {
-      const existing = await loadStoreControl();
+      const existing = await loadStoreControl(slug);
       if (existing && existing.stores.length > 0) {
         const storeMap = new Map<string, StoreControlEntry>();
         for (const s of existing.stores) {
@@ -107,13 +108,13 @@ export async function POST(req: NextRequest) {
 
     const activeStores = finalStores.filter(s => s.active).length;
 
-    await saveStoreControl({
+    await saveStoreControl(slug, {
       stores: finalStores,
       uploadedAt: new Date().toISOString(),
       uploadedBy: userEmail || userName,
     });
 
-    await addActivity({
+    await addActivity(slug, {
       id: randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'control_file_upload',
@@ -134,10 +135,12 @@ export async function POST(req: NextRequest) {
 }
 
 export async function GET(req: Request) {
+  const slug = await getTenantSlug();
+  const tenant = await getTenantEmailConfig();
   const url = new URL(req.url);
   const status = url.searchParams.get('status');
 
-  const data = await loadStoreControl();
+  const data = await loadStoreControl(slug);
 
   if (status === 'true') {
     if (!data) {
@@ -165,7 +168,7 @@ export async function GET(req: Request) {
   const sheet = workbook.addWorksheet('Stores');
 
   const headerFont: Partial<ExcelJS.Font> = { bold: true, color: { argb: 'FFFFFFFF' }, size: 11 };
-  const COL_GREEN = 'FF7CC042';
+  const COL_BRAND = hexToArgb(tenant.primaryColor);
 
   sheet.columns = [
     { header: 'COUNTRY', key: 'country', width: 15 },
@@ -185,7 +188,7 @@ export async function GET(req: Request) {
 
   const headerRow = sheet.getRow(1);
   headerRow.eachCell(cell => {
-    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_GREEN } };
+    cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: COL_BRAND } };
     cell.font = headerFont;
   });
 
@@ -209,7 +212,7 @@ export async function GET(req: Request) {
 
   const buffer = await workbook.xlsx.writeBuffer();
   const date = new Date().toISOString().split('T')[0];
-  const filename = `iRam - Store Control - ${date}.xlsx`;
+  const filename = `${tenant.name} - Store Control - ${date}.xlsx`;
 
   return new NextResponse(buffer as ArrayBuffer, {
     headers: {

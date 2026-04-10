@@ -236,7 +236,7 @@ export default function SchedulePage() {
       <Header session={session} onLogout={logout} />
 
       <main className="max-w-screen-xl mx-auto px-4 py-8 flex flex-col gap-6">
-        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[#7CC042] px-6 py-4 flex items-center justify-between">
+        <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Call Schedule</h1>
             <p className="text-sm text-gray-500 mt-0.5">{schedule.length} total rows</p>
@@ -245,7 +245,7 @@ export default function SchedulePage() {
             <button
               onClick={handleDownload}
               disabled={downloading || schedule.length === 0}
-              className="bg-[#7CC042] hover:bg-[#5a9830] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
             >
               {downloading ? 'Generating...' : 'Download Excel'}
             </button>
@@ -268,12 +268,12 @@ export default function SchedulePage() {
             value={filter}
             onChange={e => setFilter(e.target.value)}
             placeholder="Filter by name, email, store, team leader..."
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042] min-w-[250px]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)] min-w-[250px]"
           />
           <select
             value={actionFilter}
             onChange={e => setActionFilter(e.target.value)}
-            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#7CC042]"
+            className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
           >
             <option value="">All Actions</option>
             <option value="ADD">ADD</option>
@@ -320,13 +320,13 @@ export default function SchedulePage() {
 
                   if (isEditing) {
                     return (
-                      <tr key={realIdx} className="border-b border-gray-50 bg-green-50/30">
+                      <tr key={realIdx} className="border-b border-gray-50 bg-[var(--color-primary-lighter)]">
                         {/* Action dropdown */}
                         <td className="px-4 py-2">
                           <select
                             value={editRow.action}
                             onChange={e => setEditRow({ ...editRow, action: e.target.value })}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           >
                             {ACTION_OPTIONS.map(a => <option key={a} value={a}>{a}</option>)}
                           </select>
@@ -337,19 +337,19 @@ export default function SchedulePage() {
                             value={editRow.firstName}
                             onChange={e => setEditRow({ ...editRow, firstName: e.target.value })}
                             placeholder="First name"
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full mb-1 focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full mb-1 focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           />
                           <input
                             value={editRow.surname}
                             onChange={e => setEditRow({ ...editRow, surname: e.target.value })}
                             placeholder="Surname"
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full mb-1 focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full mb-1 focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           />
                           <input
                             value={editRow.userEmail}
                             onChange={e => setEditRow({ ...editRow, userEmail: e.target.value })}
                             placeholder="Email"
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           />
                         </td>
                         {/* Team Leader (read-only, joined from team control) */}
@@ -361,7 +361,7 @@ export default function SchedulePage() {
                           <input
                             value={editRow.storeId}
                             onChange={e => setEditRow({ ...editRow, storeId: e.target.value })}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full font-mono focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full font-mono focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           />
                         </td>
                         {/* Store Name */}
@@ -369,7 +369,7 @@ export default function SchedulePage() {
                           <input
                             value={editRow.storeName}
                             onChange={e => setEditRow({ ...editRow, storeName: e.target.value })}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           />
                         </td>
                         {/* Channel */}
@@ -377,7 +377,7 @@ export default function SchedulePage() {
                           <input
                             value={editRow.channel}
                             onChange={e => setEditRow({ ...editRow, channel: e.target.value })}
-                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[#7CC042] focus:outline-none"
+                            className="border border-gray-300 rounded px-2 py-1 text-xs w-full focus:ring-2 focus:ring-[var(--color-primary)] focus:outline-none"
                           />
                         </td>
                         {/* Cycle checkboxes */}
@@ -389,7 +389,7 @@ export default function SchedulePage() {
                                   type="checkbox"
                                   checked={parseCycleWeeks(editRow.cycle).includes(week)}
                                   onChange={() => toggleWeek(week)}
-                                  className="accent-[#7CC042] w-3.5 h-3.5"
+                                  className="accent-[var(--color-primary)] w-3.5 h-3.5"
                                 />
                                 <span>W{week}</span>
                               </label>
@@ -405,7 +405,7 @@ export default function SchedulePage() {
                                   type="checkbox"
                                   checked={editRow.days.includes(day)}
                                   onChange={() => toggleDay(day)}
-                                  className="accent-[#7CC042] w-3.5 h-3.5"
+                                  className="accent-[var(--color-primary)] w-3.5 h-3.5"
                                 />
                                 <span>{day.slice(0, 3)}</span>
                               </label>
@@ -464,7 +464,7 @@ export default function SchedulePage() {
                             onClick={() => startEdit(i)}
                             disabled={editingIdx !== null}
                             title="Edit row"
-                            className="text-gray-400 hover:text-[#7CC042] disabled:opacity-30 p-1 transition-colors"
+                            className="text-gray-400 hover:text-[var(--color-primary)] disabled:opacity-30 p-1 transition-colors"
                           >
                             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
                               <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />

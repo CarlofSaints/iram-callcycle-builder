@@ -1,8 +1,8 @@
 'use client';
 
-import { Session } from '@/lib/useAuth';
+import { Session, hasMinRole } from '@/lib/useAuth';
+import { useTenant } from '@/contexts/TenantContext';
 import Link from 'next/link';
-import Image from 'next/image';
 import { usePathname } from 'next/navigation';
 
 interface HeaderProps {
@@ -12,79 +12,70 @@ interface HeaderProps {
 
 export default function Header({ session, onLogout }: HeaderProps) {
   const pathname = usePathname();
+  const tenant = useTenant();
+
+  const isAdmin = hasMinRole(session, 'admin');
+  const isManager = hasMinRole(session, 'manager');
 
   function navClass(href: string) {
     const isActive = pathname === href || pathname.startsWith(href + '/');
     return `text-sm px-3 py-2 rounded-lg transition-colors font-bold ${
       isActive
-        ? 'text-[#7CC042] bg-green-50'
-        : 'text-gray-600 hover:text-[#7CC042] hover:bg-green-50'
+        ? 'text-[var(--color-primary)] bg-[var(--color-primary-lighter)]'
+        : 'text-gray-600 hover:text-[var(--color-primary)] hover:bg-[var(--color-primary-lighter)]'
     }`;
   }
 
   return (
     <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
       <div className="max-w-screen-xl mx-auto px-4 h-[72px] flex items-center justify-between gap-4">
-        {/* Left: Logos + Title */}
+        {/* Left: Logo + Title */}
         <Link href="/" className="flex items-center gap-3 min-w-0 overflow-hidden hover:opacity-80 transition-opacity">
-          <Image
-            src="/iram-logo.png"
-            alt="iRam"
-            width={40}
-            height={40}
-            className="shrink-0 object-contain"
-          />
+          {tenant.logoFilename && (
+            <img
+              src={`/api/logos/${tenant.slug}`}
+              alt={tenant.name}
+              style={{ maxWidth: tenant.logoMaxWidth, maxHeight: tenant.logoMaxHeight }}
+              className="shrink-0 object-contain"
+            />
+          )}
           <div className="hidden sm:block">
-            <p className="font-bold text-gray-900 text-sm leading-tight">iRam Call Cycle Builder</p>
-            <p className="text-xs text-gray-400 leading-tight">Perigee Schedule Converter</p>
+            <p className="font-bold text-gray-900 text-sm leading-tight">{tenant.name} {tenant.subtitle}</p>
+            <p className="text-xs text-gray-400 leading-tight">Powered by OuterJoin &amp; Perigee</p>
           </div>
-          <Image
-            src="/perigee-logo.jpg"
-            alt="Perigee"
-            width={32}
-            height={32}
-            className="shrink-0 object-contain hidden sm:block"
-          />
         </Link>
 
         {/* Center: Nav links (desktop) */}
         <nav className="hidden md:flex items-center gap-1">
-          <Link href="/upload" className={navClass('/upload')}>
-            Upload
-          </Link>
-          <Link href="/schedule" className={navClass('/schedule')}>
-            Schedule
-          </Link>
-          <Link href="/dashboard" className={navClass('/dashboard')}>
-            Dashboard
-          </Link>
-          {session.isAdmin && (
+          {/* Upload: admin + manager */}
+          {isManager && (
+            <Link href="/upload" className={navClass('/upload')}>Upload</Link>
+          )}
+          {/* Schedule + Dashboard: all roles */}
+          <Link href="/schedule" className={navClass('/schedule')}>Schedule</Link>
+          <Link href="/dashboard" className={navClass('/dashboard')}>Dashboard</Link>
+          {/* Admin-only pages */}
+          {isAdmin && (
             <>
-              <Link href="/admin/users" className={navClass('/admin/users')}>
-                Users
-              </Link>
-              <Link href="/admin/control-files" className={navClass('/admin/control-files')}>
-                Control Files
-              </Link>
-              <Link href="/activity" className={navClass('/activity')}>
-                Activity
-              </Link>
+              <Link href="/admin/users" className={navClass('/admin/users')}>Users</Link>
+              <Link href="/admin/control-files" className={navClass('/admin/control-files')}>Control Files</Link>
             </>
+          )}
+          {/* Activity: admin + manager */}
+          {isManager && (
+            <Link href="/activity" className={navClass('/activity')}>Activity</Link>
           )}
         </nav>
 
         {/* Mobile nav — visible below md breakpoint */}
         <nav className="flex md:hidden items-center gap-1 overflow-x-auto">
-          <Link href="/upload" className={navClass('/upload')}>Upload</Link>
+          {isManager && <Link href="/upload" className={navClass('/upload')}>Upload</Link>}
           <Link href="/schedule" className={navClass('/schedule')}>Schedule</Link>
           <Link href="/dashboard" className={navClass('/dashboard')}>Dashboard</Link>
         </nav>
 
-        {/* Right: 5FR + User + sign out */}
+        {/* Right: User + sign out */}
         <div className="flex items-center gap-3 shrink-0">
-          <Link href="/5fr" className={navClass('/5fr')}>
-            5FR
-          </Link>
           <div className="hidden sm:block text-right">
             <p className="text-sm font-medium text-gray-800 leading-tight">{session.name} {session.surname}</p>
             <p className="text-xs text-gray-400 leading-tight">{session.email}</p>
@@ -92,7 +83,7 @@ export default function Header({ session, onLogout }: HeaderProps) {
 
           <button
             onClick={onLogout}
-            className="text-xs bg-[#7CC042] hover:bg-[#5a9830] text-white px-3 py-1.5 rounded font-medium transition-colors"
+            className="text-xs bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] text-white px-3 py-1.5 rounded font-medium transition-colors"
           >
             Sign Out
           </button>
