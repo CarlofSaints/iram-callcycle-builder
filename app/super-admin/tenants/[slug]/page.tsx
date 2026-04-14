@@ -19,6 +19,18 @@ interface Tenant {
   createdAt: string;
 }
 
+interface TenantUser {
+  id: string;
+  name: string;
+  surname: string;
+  email: string;
+  isAdmin: boolean;
+  role: string;
+  forcePasswordChange: boolean;
+  firstLoginAt: string | null;
+  createdAt: string;
+}
+
 function getHeaders(): Record<string, string> {
   const raw = localStorage.getItem('cc_super_admin_session');
   if (!raw) return {};
@@ -47,6 +59,14 @@ export default function EditTenantPage() {
   const [active, setActive] = useState(true);
   const [logoFile, setLogoFile] = useState<File | null>(null);
   const [logoPreview, setLogoPreview] = useState<string | null>(null);
+
+  // Tenant admin users
+  const [users, setUsers] = useState<TenantUser[]>([]);
+  const [usersLoading, setUsersLoading] = useState(true);
+  const [resetUserId, setResetUserId] = useState<string | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetForce, setResetForce] = useState(true);
+  const [resetting, setResetting] = useState(false);
 
   function handleLogoChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -78,6 +98,16 @@ export default function EditTenantPage() {
         }
       } catch { /* ignore */ }
       setLoading(false);
+
+      // Load tenant admin users
+      try {
+        const uRes = await fetch(`/api/super-admin/tenants/${slug}/users`, {
+          headers: getHeaders(),
+          cache: 'no-store',
+        });
+        if (uRes.ok) setUsers(await uRes.json());
+      } catch { /* ignore */ }
+      setUsersLoading(false);
     }
     load();
   }, [slug]);
@@ -136,6 +166,33 @@ export default function EditTenantPage() {
       setSuccess(`Tenant ${!active ? 'activated' : 'deactivated'}`);
     } catch {
       setError('Failed to update status');
+    }
+  }
+
+  async function handleResetPassword(userId: string) {
+    if (!resetPassword.trim()) return;
+    setResetting(true);
+    try {
+      const res = await fetch(`/api/super-admin/tenants/${slug}/users`, {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ userId, password: resetPassword, forcePasswordChange: resetForce }),
+      });
+      if (res.ok) {
+        const updated = await res.json();
+        setUsers(prev => prev.map(u => u.id === userId ? { ...u, forcePasswordChange: updated.forcePasswordChange } : u));
+        setSuccess(`Password reset for ${users.find(u => u.id === userId)?.email || 'user'}`);
+        setResetUserId(null);
+        setResetPassword('');
+        setResetForce(true);
+      } else {
+        const data = await res.json();
+        setError(data.error || 'Password reset failed');
+      }
+    } catch {
+      setError('Network error');
+    } finally {
+      setResetting(false);
     }
   }
 
@@ -254,6 +311,85 @@ export default function EditTenantPage() {
           </button>
         </div>
       </form>
+
+      {/* Tenant Admin Users */}
+      <div className="bg-white rounded-xl border border-gray-200 p-6 mt-6">
+        <h2 className="text-sm font-bold text-gray-700 uppercase tracking-wide mb-4">Tenant Admin Users</h2>
+
+        {usersLoading ? (
+          <p className="text-sm text-gray-400">Loading users...</p>
+        ) : users.length === 0 ? (
+          <p className="text-sm text-gray-400">No users found for this tenant.</p>
+        ) : (
+          <div className="flex flex-col gap-3">
+            {users.map(u => (
+              <div key={u.id} className="border border-gray-100 rounded-lg p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-gray-900">{u.name} {u.surname}</span>
+                      {u.isAdmin && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-[#F1562A]/10 text-[#F1562A] uppercase">Admin</span>
+                      )}
+                      {u.forcePasswordChange && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded bg-amber-100 text-amber-700 uppercase">PW Change Required</span>
+                      )}
+                    </div>
+                    <p className="text-xs text-gray-500 mt-0.5">{u.email}</p>
+                    <p className="text-[11px] text-gray-400 mt-0.5">
+                      Role: {u.role} &middot; Created: {new Date(u.createdAt).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}
+                      {u.firstLoginAt && <> &middot; First login: {new Date(u.firstLoginAt).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}</>}
+                    </p>
+                  </div>
+                  <button
+                    onClick={() => {
+                      setResetUserId(resetUserId === u.id ? null : u.id);
+                      setResetPassword('');
+                      setResetForce(true);
+                    }}
+                    className="shrink-0 text-xs font-semibold text-[#F1562A] hover:text-[#d94420] transition-colors"
+                  >
+                    {resetUserId === u.id ? 'Cancel' : 'Reset Password'}
+                  </button>
+                </div>
+
+                {resetUserId === u.id && (
+                  <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-3">
+                    <div className="flex items-end gap-3">
+                      <div className="flex-1 flex flex-col gap-1">
+                        <label className="text-xs font-semibold text-gray-600">New Password</label>
+                        <input
+                          type="text"
+                          value={resetPassword}
+                          onChange={e => setResetPassword(e.target.value)}
+                          placeholder="Enter new password"
+                          className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
+                        />
+                      </div>
+                      <button
+                        onClick={() => handleResetPassword(u.id)}
+                        disabled={!resetPassword.trim() || resetting}
+                        className="shrink-0 bg-[#F1562A] hover:bg-[#d94420] disabled:opacity-50 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors"
+                      >
+                        {resetting ? 'Resetting...' : 'Reset'}
+                      </button>
+                    </div>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={resetForce}
+                        onChange={e => setResetForce(e.target.checked)}
+                        className="h-4 w-4 accent-[#F1562A] rounded"
+                      />
+                      <span className="text-xs text-gray-600">Force password change on next login</span>
+                    </label>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
     </main>
   );
 }
