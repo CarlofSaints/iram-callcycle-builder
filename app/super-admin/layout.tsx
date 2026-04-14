@@ -54,7 +54,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
   function navClass(href: string) {
     const isActive = pathname === href || pathname.startsWith(href + '/');
     return `text-sm px-3 py-2 rounded-lg transition-colors font-bold ${
-      isActive ? 'text-indigo-700 bg-indigo-50' : 'text-gray-600 hover:text-indigo-700 hover:bg-indigo-50'
+      isActive ? 'text-white bg-[#F1562A]' : 'text-gray-600 hover:text-[#F1562A] hover:bg-orange-50'
     }`;
   }
 
@@ -63,10 +63,10 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
         <div className="max-w-screen-xl mx-auto px-4 h-[72px] flex items-center justify-between gap-4">
           <Link href="/super-admin" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 rounded-lg bg-indigo-600 flex items-center justify-center text-white font-bold text-sm">CC</div>
+            <div className="w-8 h-8 rounded-lg bg-[#F1562A] flex items-center justify-center text-white font-bold text-sm">FG</div>
             <div>
-              <p className="font-bold text-gray-900 text-sm leading-tight">Control Centre</p>
-              <p className="text-xs text-gray-400 leading-tight">Call Cycle Platform</p>
+              <p className="font-bold text-gray-900 text-sm leading-tight">Field Goose</p>
+              <p className="text-xs text-gray-400 leading-tight">Call Cycle Control Centre</p>
             </div>
           </Link>
 
@@ -82,7 +82,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
             </div>
             <button
               onClick={logout}
-              className="text-xs bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded font-medium transition-colors"
+              className="text-xs bg-[#010101] hover:bg-[#333] text-white px-3 py-1.5 rounded font-medium transition-colors"
             >
               Sign Out
             </button>

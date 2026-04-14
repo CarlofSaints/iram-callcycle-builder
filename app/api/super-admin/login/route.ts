@@ -23,5 +23,6 @@ export async function POST(req: NextRequest) {
     id: admin.id,
     email: admin.email,
     name: admin.name,
+    forcePasswordChange: admin.forcePasswordChange === true,
   });
 }

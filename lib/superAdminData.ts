@@ -5,6 +5,7 @@ export interface SuperAdmin {
   email: string;
   name: string;
   passwordHash: string;
+  forcePasswordChange?: boolean;
   createdAt: string;
 }
 

@@ -23,6 +23,8 @@ export default function SuperAdminsPage() {
   const [newEmail, setNewEmail] = useState('');
   const [newName, setNewName] = useState('');
   const [newPassword, setNewPassword] = useState('');
+  const [forcePasswordChange, setForcePasswordChange] = useState(true);
+  const [notifyUser, setNotifyUser] = useState(true);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -47,7 +49,7 @@ export default function SuperAdminsPage() {
       const res = await fetch('/api/super-admin/admins', {
         method: 'POST',
         headers: getHeaders(),
-        body: JSON.stringify({ email: newEmail, name: newName, password: newPassword }),
+        body: JSON.stringify({ email: newEmail, name: newName, password: newPassword, forcePasswordChange, notifyUser }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed'); return; }
@@ -85,7 +87,7 @@ export default function SuperAdminsPage() {
           <p className="text-sm text-gray-500 mt-1">Platform-level administrators with access to all tenants</p>
         </div>
         <button onClick={() => setShowAdd(!showAdd)}
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors">
+          className="bg-[#F1562A] hover:bg-[#d94420] text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors">
           {showAdd ? 'Cancel' : '+ Add'}
         </button>
       </div>
@@ -96,22 +98,34 @@ export default function SuperAdminsPage() {
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600">Name</label>
               <input value={newName} onChange={e => setNewName(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F1562A]" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600">Email</label>
               <input type="email" value={newEmail} onChange={e => setNewEmail(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#F1562A]" />
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600">Password</label>
               <input value={newPassword} onChange={e => setNewPassword(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-indigo-500" />
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#F1562A]" />
             </div>
+          </div>
+          <div className="flex items-center gap-6">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={forcePasswordChange} onChange={e => setForcePasswordChange(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 accent-[#F1562A]" />
+              <span className="text-sm text-gray-700">Force password change on first login</span>
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={notifyUser} onChange={e => setNotifyUser(e.target.checked)}
+                className="w-4 h-4 rounded border-gray-300 accent-[#F1562A]" />
+              <span className="text-sm text-gray-700">Notify user via email</span>
+            </label>
           </div>
           {error && <div className="text-sm text-red-600">{error}</div>}
           <button type="submit" disabled={saving}
-            className="self-end bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
+            className="self-end bg-[#F1562A] hover:bg-[#d94420] disabled:opacity-50 text-white font-bold text-sm px-5 py-2 rounded-lg transition-colors">
             {saving ? 'Adding...' : 'Add Super Admin'}
           </button>
         </form>

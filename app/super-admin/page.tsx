@@ -49,7 +49,7 @@ export default function SuperAdminDashboard() {
         </div>
         <Link
           href="/super-admin/tenants/new"
-          className="bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
+          className="bg-[#F1562A] hover:bg-[#d94420] text-white text-sm font-bold px-5 py-2 rounded-lg transition-colors"
         >
           + New Tenant
         </Link>

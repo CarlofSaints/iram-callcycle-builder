@@ -1,5 +1,6 @@
-import { NextResponse } from 'next/server';
-import { get } from '@vercel/blob';
+import { NextRequest, NextResponse } from 'next/server';
+import { get, put } from '@vercel/blob';
+import { loadSuperAdmins } from '@/lib/superAdminData';
 
 export const dynamic = 'force-dynamic';
 
@@ -44,4 +45,48 @@ export async function GET(_req: Request, { params }: { params: Promise<{ slug: s
       'Cache-Control': 'public, max-age=60',
     },
   });
+}
+
+/**
+ * Upload a tenant logo. Accepts multipart form data with a "file" field.
+ */
+export async function POST(req: NextRequest, { params }: { params: Promise<{ slug: string }> }) {
+  // Verify super-admin
+  const email = req.headers.get('x-super-admin-email');
+  if (!email) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const admins = await loadSuperAdmins();
+  if (!admins.some(a => a.email.toLowerCase() === email.toLowerCase())) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { slug } = await params;
+  const formData = await req.formData();
+  const file = formData.get('file') as File | null;
+  if (!file) {
+    return NextResponse.json({ error: 'No file provided' }, { status: 400 });
+  }
+
+  // Determine extension from file type
+  const mimeToExt: Record<string, string> = {
+    'image/png': 'png',
+    'image/jpeg': 'jpg',
+    'image/jpg': 'jpg',
+    'image/svg+xml': 'svg',
+  };
+  const ext = mimeToExt[file.type];
+  if (!ext) {
+    return NextResponse.json({ error: 'Unsupported file type. Use PNG, JPG, or SVG.' }, { status: 400 });
+  }
+
+  const buffer = Buffer.from(await file.arrayBuffer());
+  const blobKey = `_platform/logos/${slug}.${ext}`;
+
+  await put(blobKey, buffer, {
+    access: 'private',
+    contentType: file.type,
+    allowOverwrite: true,
+    addRandomSuffix: false,
+  });
+
+  return NextResponse.json({ ok: true, key: blobKey });
 }
