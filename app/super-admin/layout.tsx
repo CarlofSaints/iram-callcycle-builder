@@ -63,7 +63,7 @@ export default function SuperAdminLayout({ children }: { children: React.ReactNo
       <header className="bg-white border-b border-gray-200 shadow-sm sticky top-0 z-30">
         <div className="max-w-screen-xl mx-auto px-4 h-[72px] flex items-center justify-between gap-4">
           <Link href="/super-admin" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
-            <div className="w-8 h-8 rounded-lg bg-[#F1562A] flex items-center justify-center text-white font-bold text-sm">FG</div>
+            <img src="/field-goose-logo.png" alt="Field Goose" className="w-8 h-8 object-contain" />
             <div>
               <p className="font-bold text-gray-900 text-sm leading-tight">Field Goose</p>
               <p className="text-xs text-gray-400 leading-tight">Call Cycle Control Centre</p>

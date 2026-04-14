@@ -71,9 +71,12 @@ export default function SuperAdminLoginPage() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm">
-        <div className="bg-[#F1562A] rounded-t-xl px-8 py-6 text-white text-center">
-          <h1 className="text-2xl font-bold tracking-wide">Field Goose</h1>
-          <p className="text-sm opacity-90 mt-1">Call Cycle Control Centre</p>
+        <div className="bg-[#F1562A] rounded-t-xl px-8 py-6 text-white text-center flex flex-col items-center gap-3">
+          <img src="/field-goose-logo.png" alt="Field Goose" className="h-16 w-16 object-contain" />
+          <div>
+            <h1 className="text-2xl font-bold tracking-wide">Field Goose</h1>
+            <p className="text-sm opacity-90 mt-1">Call Cycle Control Centre</p>
+          </div>
         </div>
 
         {mustChange ? (
