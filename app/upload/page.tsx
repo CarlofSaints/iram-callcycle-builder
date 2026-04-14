@@ -6,6 +6,12 @@ import { useState, useRef } from 'react';
 
 type ParseMode = 'team-leader' | 'user' | 'user-4wk';
 
+const TEMPLATE_MAP: Record<ParseMode, string> = {
+  'team-leader': 'cc-team-leader',
+  'user': 'cc-user',
+  'user-4wk': 'cc-user-4wk',
+};
+
 export default function UploadPage() {
   const { session, loading, logout } = useAuth('manager');
   const [file, setFile] = useState<File | null>(null);
@@ -163,13 +169,21 @@ export default function UploadPage() {
             />
           </div>
 
-          <button
-            onClick={handleUpload}
-            disabled={!file || uploading}
-            className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-6 py-2.5 rounded-lg transition-colors self-start"
-          >
-            {uploading ? 'Processing...' : 'Upload & Process'}
-          </button>
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleUpload}
+              disabled={!file || uploading}
+              className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-6 py-2.5 rounded-lg transition-colors"
+            >
+              {uploading ? 'Processing...' : 'Upload & Process'}
+            </button>
+            <button
+              onClick={() => window.open(`/api/control-files/templates?type=${TEMPLATE_MAP[parseMode]}`, '_blank')}
+              className="text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+            >
+              Download Template
+            </button>
+          </div>
 
           {result && (
             <div className={`rounded-lg p-4 text-sm ${result.ok ? 'bg-[var(--color-primary-lighter)] border border-green-200' : 'bg-red-50 border border-red-200'}`}>
