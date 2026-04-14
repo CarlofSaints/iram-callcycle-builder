@@ -192,6 +192,14 @@ export default function ControlFilesPage() {
     window.open('/api/control-files/teams?exceptions=true', '_blank');
   }
 
+  function downloadStoreTemplate() {
+    window.open('/api/control-files/templates?type=store', '_blank');
+  }
+
+  function downloadTeamTemplate() {
+    window.open('/api/control-files/templates?type=team', '_blank');
+  }
+
   function formatDate(iso: string | undefined) {
     if (!iso) return '';
     return new Date(iso).toLocaleString('en-ZA', { dateStyle: 'medium', timeStyle: 'short' });
@@ -339,6 +347,12 @@ export default function ControlFilesPage() {
                 Download Current
               </button>
             )}
+            <button
+              onClick={downloadStoreTemplate}
+              className="text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+            >
+              Download Template
+            </button>
           </div>
         </section>
 
@@ -441,6 +455,12 @@ export default function ControlFilesPage() {
                 Download Current
               </button>
             )}
+            <button
+              onClick={downloadTeamTemplate}
+              className="text-sm text-gray-500 hover:text-gray-700 underline underline-offset-2 transition-colors"
+            >
+              Download Template
+            </button>
           </div>
         </section>
 
