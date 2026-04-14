@@ -20,7 +20,7 @@ function loadTenantsFromEnv(): TenantConfigEdge[] {
   try { return JSON.parse(raw); } catch { return []; }
 }
 
-export function middleware(req: NextRequest) {
+export function proxy(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
   // Super-admin paths bypass tenant resolution entirely
