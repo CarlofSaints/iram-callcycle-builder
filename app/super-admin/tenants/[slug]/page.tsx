@@ -130,18 +130,31 @@ export default function EditTenantPage() {
           active,
         }),
       });
-      const data = await res.json();
+      let data = await res.json();
       if (!res.ok) { setError(data.error || 'Update failed'); return; }
 
       // Upload logo if a new one was selected
       if (logoFile) {
         const formData = new FormData();
         formData.append('file', logoFile);
-        await fetch(`/api/logos/${slug}`, {
+        const logoRes = await fetch(`/api/logos/${slug}`, {
           method: 'POST',
           headers: { 'x-super-admin-email': getHeaders()['x-super-admin-email'] },
           body: formData,
         });
+        if (logoRes.ok) {
+          // Update tenant config with the logo filename
+          const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
+          const logoFilename = `${slug}.${ext}`;
+          const patchRes = await fetch(`/api/super-admin/tenants/${slug}`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+            body: JSON.stringify({ logoFilename }),
+          });
+          if (patchRes.ok) {
+            data = await patchRes.json();
+          }
+        }
         setLogoFile(null);
       }
 

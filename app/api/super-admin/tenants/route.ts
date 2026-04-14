@@ -100,5 +100,27 @@ export async function POST(req: NextRequest) {
     allowOverwrite: true, addRandomSuffix: false,
   });
 
+  // Auto-add subdomain to Vercel project for SSL cert provisioning
+  const vercelToken = process.env.VERCEL_TOKEN;
+  const vercelProjectId = process.env.VERCEL_PROJECT_ID;
+  if (vercelToken && vercelProjectId) {
+    const domain = `${slug}.callcycle.fieldgoose.outerjoin.co.za`;
+    try {
+      await fetch(
+        `https://api.vercel.com/v10/projects/${vercelProjectId}/domains`,
+        {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${vercelToken}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ name: domain }),
+        }
+      );
+    } catch (e) {
+      console.error('[tenants] Failed to add Vercel domain:', domain, e);
+    }
+  }
+
   return NextResponse.json({ ok: true, tenant }, { status: 201 });
 }
