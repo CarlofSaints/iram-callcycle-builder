@@ -59,6 +59,12 @@ export function proxy(req: NextRequest) {
   const tenant = tenants.find(t => t.active && t.domains.some(d => d.toLowerCase() === host));
 
   if (!tenant) {
+    // Platform/super-admin root domain (no tenant subdomain) — redirect to super-admin
+    const platformDomain = process.env.PLATFORM_DOMAIN?.toLowerCase();
+    if (platformDomain && host === platformDomain) {
+      return NextResponse.redirect(new URL('/super-admin/login', req.url));
+    }
+
     // Also allow the base Vercel domain during transition
     const isVercelDomain = host.endsWith('.vercel.app') || host.endsWith('.vercel.sh');
     if (isVercelDomain && tenants.length > 0) {
