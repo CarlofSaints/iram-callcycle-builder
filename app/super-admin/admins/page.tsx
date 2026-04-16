@@ -25,8 +25,19 @@ export default function SuperAdminsPage() {
   const [newPassword, setNewPassword] = useState('');
   const [forcePasswordChange, setForcePasswordChange] = useState(true);
   const [notifyUser, setNotifyUser] = useState(true);
+  const [showNewPw, setShowNewPw] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Reset password state
+  const [resetId, setResetId] = useState<string | null>(null);
+  const [resetPw, setResetPw] = useState('');
+  const [resetForce, setResetForce] = useState(true);
+  const [resetNotify, setResetNotify] = useState(true);
+  const [resetShowPw, setResetShowPw] = useState(true);
+  const [resetSaving, setResetSaving] = useState(false);
+  const [resetError, setResetError] = useState('');
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null);
 
   async function fetchAdmins() {
     try {
@@ -60,6 +71,48 @@ export default function SuperAdminsPage() {
       setError('Network error');
     } finally {
       setSaving(false);
+    }
+  }
+
+  function generatePassword() {
+    const chars = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let p = '';
+    for (let i = 0; i < 10; i++) p += chars[Math.floor(Math.random() * chars.length)];
+    setResetPw(p);
+  }
+
+  function openReset(id: string) {
+    setResetId(resetId === id ? null : id);
+    setResetPw('');
+    setResetForce(true);
+    setResetNotify(true);
+    setResetShowPw(true);
+    setResetError('');
+  }
+
+  async function handleReset(id: string) {
+    setResetError('');
+    if (resetPw.length < 6) {
+      setResetError('Password must be at least 6 characters');
+      return;
+    }
+    setResetSaving(true);
+    try {
+      const res = await fetch('/api/super-admin/admins', {
+        method: 'PATCH',
+        headers: getHeaders(),
+        body: JSON.stringify({ id, password: resetPw, forcePasswordChange: resetForce, notifyUser: resetNotify }),
+      });
+      const data = await res.json();
+      if (!res.ok) { setResetError(data.error || 'Failed to reset'); return; }
+      setToast({ msg: `Password reset${data.emailSent ? ' — email sent' : ''}`, type: 'success' });
+      setResetId(null);
+      setResetPw('');
+      setTimeout(() => setToast(null), 4000);
+    } catch {
+      setResetError('Network error');
+    } finally {
+      setResetSaving(false);
     }
   }
 
@@ -107,8 +160,14 @@ export default function SuperAdminsPage() {
             </div>
             <div className="flex flex-col gap-1">
               <label className="text-xs font-semibold text-gray-600">Password</label>
-              <input value={newPassword} onChange={e => setNewPassword(e.target.value)} required
-                className="border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-[#F1562A]" />
+              <div className="relative">
+                <input type={showNewPw ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)} required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono pr-12 focus:outline-none focus:ring-2 focus:ring-[#F1562A]" />
+                <button type="button" onClick={() => setShowNewPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
+                  {showNewPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
           </div>
           <div className="flex items-center gap-6">
@@ -136,24 +195,78 @@ export default function SuperAdminsPage() {
       ) : (
         <div className="bg-white rounded-xl border border-gray-200 divide-y divide-gray-100">
           {admins.map(a => (
-            <div key={a.id} className="flex items-center justify-between px-5 py-4">
-              <div>
-                <p className="font-medium text-gray-900 text-sm">{a.name}</p>
-                <p className="text-xs text-gray-500">{a.email}</p>
-              </div>
-              <div className="flex items-center gap-3">
-                <span className="text-xs text-gray-400">
-                  Since {new Date(a.createdAt).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}
-                </span>
-                {admins.length > 1 && (
-                  <button onClick={() => handleRemove(a.id, a.name)}
-                    className="text-xs text-red-500 hover:text-red-700 font-medium">
-                    Remove
+            <div key={a.id} className="px-5 py-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="font-medium text-gray-900 text-sm">{a.name}</p>
+                  <p className="text-xs text-gray-500">{a.email}</p>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-gray-400">
+                    Since {new Date(a.createdAt).toLocaleDateString('en-ZA', { dateStyle: 'medium' })}
+                  </span>
+                  <button onClick={() => openReset(a.id)}
+                    className="text-xs text-[#F1562A] hover:text-[#d94420] font-medium">
+                    {resetId === a.id ? 'Cancel' : 'Reset Password'}
                   </button>
-                )}
+                  {admins.length > 1 && (
+                    <button onClick={() => handleRemove(a.id, a.name)}
+                      className="text-xs text-red-500 hover:text-red-700 font-medium">
+                      Remove
+                    </button>
+                  )}
+                </div>
               </div>
+
+              {resetId === a.id && (
+                <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-3">
+                  <div className="flex items-end gap-3">
+                    <div className="flex-1 flex flex-col gap-1">
+                      <label className="text-xs font-semibold text-gray-600">New Password</label>
+                      <div className="relative">
+                        <input type={resetShowPw ? 'text' : 'password'} value={resetPw}
+                          onChange={e => setResetPw(e.target.value)}
+                          placeholder="Enter or generate a new password"
+                          className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm font-mono pr-12 focus:outline-none focus:ring-2 focus:ring-[#F1562A]" />
+                        <button type="button" onClick={() => setResetShowPw(v => !v)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
+                          {resetShowPw ? 'Hide' : 'Show'}
+                        </button>
+                      </div>
+                    </div>
+                    <button type="button" onClick={generatePassword}
+                      className="shrink-0 text-xs border border-gray-300 hover:bg-gray-50 text-gray-700 font-medium px-3 py-2 rounded-lg transition-colors">
+                      Generate
+                    </button>
+                    <button onClick={() => handleReset(a.id)} disabled={!resetPw.trim() || resetSaving}
+                      className="shrink-0 bg-[#F1562A] hover:bg-[#d94420] disabled:opacity-50 text-white text-sm font-bold px-4 py-2 rounded-lg transition-colors">
+                      {resetSaving ? 'Resetting...' : 'Reset'}
+                    </button>
+                  </div>
+                  <div className="flex items-center gap-6">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={resetForce} onChange={e => setResetForce(e.target.checked)}
+                        className="h-4 w-4 accent-[#F1562A] rounded" />
+                      <span className="text-xs text-gray-600">Force password change on next login</span>
+                    </label>
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={resetNotify} onChange={e => setResetNotify(e.target.checked)}
+                        className="h-4 w-4 accent-[#F1562A] rounded" />
+                      <span className="text-xs text-gray-600">Email the new password to {a.email}</span>
+                    </label>
+                  </div>
+                  {resetError && <div className="text-xs text-red-600">{resetError}</div>}
+                </div>
+              )}
             </div>
           ))}
+        </div>
+      )}
+
+      {toast && (
+        <div className={`fixed top-20 right-4 z-50 px-4 py-3 rounded-lg shadow-lg text-sm font-medium text-white
+          ${toast.type === 'success' ? 'bg-green-600' : 'bg-red-600'}`}>
+          {toast.msg}
         </div>
       )}
     </main>

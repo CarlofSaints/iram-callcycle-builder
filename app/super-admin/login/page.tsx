@@ -10,10 +10,14 @@ export default function SuperAdminLoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  const [showPw, setShowPw] = useState(false);
+
   // Force password change state
   const [mustChange, setMustChange] = useState(false);
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showNewPw, setShowNewPw] = useState(false);
+  const [showConfirmPw, setShowConfirmPw] = useState(false);
   const [changingPw, setChangingPw] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
@@ -87,21 +91,33 @@ export default function SuperAdminLoginPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">New Password</label>
-              <input
-                type="password" value={newPassword} onChange={e => setNewPassword(e.target.value)}
-                required autoFocus
-                className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
-                placeholder="Min 6 characters"
-              />
+              <div className="relative">
+                <input
+                  type={showNewPw ? 'text' : 'password'} value={newPassword} onChange={e => setNewPassword(e.target.value)}
+                  required autoFocus
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
+                  placeholder="Min 6 characters"
+                />
+                <button type="button" onClick={() => setShowNewPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
+                  {showNewPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Confirm Password</label>
-              <input
-                type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
-                required
-                className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
-                placeholder="Repeat password"
-              />
+              <div className="relative">
+                <input
+                  type={showConfirmPw ? 'text' : 'password'} value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
+                  placeholder="Repeat password"
+                />
+                <button type="button" onClick={() => setShowConfirmPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
+                  {showConfirmPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>
@@ -124,12 +140,18 @@ export default function SuperAdminLoginPage() {
             </div>
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Password</label>
-              <input
-                type="password" value={password} onChange={e => setPassword(e.target.value)}
-                required
-                className="border border-gray-300 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
-                placeholder="••••••••"
-              />
+              <div className="relative">
+                <input
+                  type={showPw ? 'text' : 'password'} value={password} onChange={e => setPassword(e.target.value)}
+                  required
+                  className="w-full border border-gray-300 rounded-lg px-3 py-2.5 text-sm pr-10 focus:outline-none focus:ring-2 focus:ring-[#F1562A]"
+                  placeholder="••••••••"
+                />
+                <button type="button" onClick={() => setShowPw(v => !v)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-xs" tabIndex={-1}>
+                  {showPw ? 'Hide' : 'Show'}
+                </button>
+              </div>
             </div>
             {error && (
               <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>

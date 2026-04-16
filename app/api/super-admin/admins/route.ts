@@ -94,6 +94,74 @@ export async function POST(req: NextRequest) {
   return NextResponse.json(safe, { status: 201 });
 }
 
+export async function PATCH(req: NextRequest) {
+  if (!await verifySuperAdmin(req)) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+
+  const { id, password, forcePasswordChange, notifyUser } = await req.json();
+  if (!id || !password) {
+    return NextResponse.json({ error: 'Missing id or password' }, { status: 400 });
+  }
+  if (password.length < 6) {
+    return NextResponse.json({ error: 'Password must be at least 6 characters' }, { status: 400 });
+  }
+
+  const admins = await loadSuperAdmins();
+  const idx = admins.findIndex(a => a.id === id);
+  if (idx === -1) {
+    return NextResponse.json({ error: 'Not found' }, { status: 404 });
+  }
+
+  admins[idx].passwordHash = await bcrypt.hash(password, 10);
+  admins[idx].forcePasswordChange = forcePasswordChange !== false;
+  await saveSuperAdmins(admins);
+
+  const target = admins[idx];
+
+  // Optional notification email
+  if (notifyUser && process.env.RESEND_API_KEY) {
+    try {
+      const resend = new Resend(process.env.RESEND_API_KEY);
+      const appUrl = 'https://callcycle.fieldgoose.outerjoin.co.za';
+      await resend.emails.send({
+        from: 'Field Goose Control Centre <report_sender@outerjoin.co.za>',
+        to: target.email,
+        subject: 'Your Field Goose password has been reset',
+        html: `
+          <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;border:1px solid #e5e5e5;">
+            <table width="100%" cellpadding="0" cellspacing="0" style="background:#F1562A;">
+              <tr><td style="padding:20px 28px;">
+                <div style="color:#fff;font-size:20px;font-weight:bold;">FIELD GOOSE</div>
+                <div style="color:#fff;margin:3px 0 0;opacity:0.85;font-size:12px;">Call Cycle Control Centre</div>
+              </td></tr>
+            </table>
+            <div style="padding:32px 28px;background:#fff;">
+              <p style="margin:0 0 14px;">Hi <strong>${target.name}</strong>,</p>
+              <p style="margin:0 0 20px;">Your Super Admin password has been reset by another administrator.</p>
+              <table style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:14px 16px;width:100%;margin-bottom:20px;">
+                <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Login URL</td><td style="font-size:13px;"><a href="${appUrl}/super-admin/login" style="color:#F1562A;">${appUrl}/super-admin/login</a></td></tr>
+                <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Email</td><td style="font-size:13px;">${target.email}</td></tr>
+                <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">New Password</td><td style="font-size:13px;font-family:monospace;">${password}</td></tr>
+              </table>
+              ${forcePasswordChange !== false ? '<p style="margin:0 0 20px;color:#666;font-size:13px;">You will be asked to change your password on next login.</p>' : ''}
+              <a href="${appUrl}/super-admin/login" style="background:#F1562A;color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:bold;font-size:14px;display:inline-block;">Login Now</a>
+              <p style="margin:20px 0 0;color:#888;font-size:11px;">If you didn't request this change, contact your administrator immediately.</p>
+            </div>
+            <div style="padding:14px 28px;text-align:center;font-size:11px;color:#999;background:#f9f9f9;border-top:1px solid #eee;">
+              Field Goose Call Cycle Control Centre &bull; Powered by OuterJoin
+            </div>
+          </div>
+        `,
+      });
+    } catch (err) {
+      console.error('[super-admin] Reset email failed:', err);
+    }
+  }
+
+  return NextResponse.json({ ok: true, emailSent: !!notifyUser });
+}
+
 export async function DELETE(req: NextRequest) {
   if (!await verifySuperAdmin(req)) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
