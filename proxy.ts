@@ -65,10 +65,20 @@ export function proxy(req: NextRequest) {
       return NextResponse.redirect(new URL('/super-admin/login', req.url));
     }
 
-    // Also allow the base Vercel domain during transition
+    // Legacy single-tenant URL — permanently redirect to the iRam canonical domain
+    if (host === 'iram-callcycle-builder.vercel.app') {
+      const destPath = req.nextUrl.pathname + req.nextUrl.search;
+      return NextResponse.redirect(
+        `https://iram.callcycle.fieldgoose.outerjoin.co.za${destPath}`,
+        308,
+      );
+    }
+
+    // Other Vercel preview URLs (per-deployment hashes, etc.) — route to first
+    // active tenant so developers can still test previews. End users don't
+    // encounter these URLs.
     const isVercelDomain = host.endsWith('.vercel.app') || host.endsWith('.vercel.sh');
     if (isVercelDomain && tenants.length > 0) {
-      // During migration: route vercel.app domain to first active tenant
       const fallback = tenants.find(t => t.active);
       if (fallback) {
         const headers = new Headers(req.headers);
