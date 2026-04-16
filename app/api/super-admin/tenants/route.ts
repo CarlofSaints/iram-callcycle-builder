@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto';
 import { loadTenants, saveTenants, TenantConfig } from '@/lib/tenantConfig';
 import { loadSuperAdmins } from '@/lib/superAdminData';
 import { saveUsers, User } from '@/lib/userData';
+import { sendWelcomeEmail } from '@/lib/email';
 import { put } from '@vercel/blob';
 
 export const dynamic = 'force-dynamic';
@@ -40,6 +41,7 @@ export async function POST(req: NextRequest) {
     name, slug, subtitle, primaryColor, secondaryColor, accentColor,
     logoMaxWidth, logoMaxHeight, domains,
     adminEmail, adminName, adminPassword,
+    sendWelcomeEmail: shouldNotify = true,
   } = body;
 
   if (!name || !slug || !primaryColor || !adminEmail || !adminPassword) {
@@ -122,5 +124,28 @@ export async function POST(req: NextRequest) {
     }
   }
 
-  return NextResponse.json({ ok: true, tenant }, { status: 201 });
+  // Send welcome email to the new tenant admin
+  let emailSent = false;
+  if (shouldNotify && process.env.RESEND_API_KEY) {
+    const tenantDomain = tenant.domains[0];
+    try {
+      const result = await sendWelcomeEmail(
+        adminEmail,
+        adminName || adminEmail,
+        adminPassword,
+        {
+          name: tenant.name,
+          subtitle: tenant.subtitle,
+          primaryColor: tenant.primaryColor,
+          appUrl: `https://${tenantDomain}`,
+        },
+      );
+      emailSent = !(result && (result as { error?: unknown }).error);
+      if (!emailSent) console.error('[tenants] Welcome email failed:', (result as { error: unknown }).error);
+    } catch (err) {
+      console.error('[tenants] Welcome email exception:', err);
+    }
+  }
+
+  return NextResponse.json({ ok: true, tenant, emailSent }, { status: 201 });
 }

@@ -29,6 +29,8 @@ export default function NewTenantPage() {
   const [adminName, setAdminName] = useState('');
   const [adminPassword, setAdminPassword] = useState('');
   const [showAdminPw, setShowAdminPw] = useState(false);
+  const [sendWelcome, setSendWelcome] = useState(true);
+  const [welcomeEmailSent, setWelcomeEmailSent] = useState(false);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const [created, setCreated] = useState(false);
@@ -64,20 +66,31 @@ export default function NewTenantPage() {
           logoMaxWidth: 200, logoMaxHeight: 60,
           domains: [`${slug}.callcycle.fieldgoose.outerjoin.co.za`],
           adminEmail, adminName, adminPassword,
+          sendWelcomeEmail: sendWelcome,
         }),
       });
       const data = await res.json();
       if (!res.ok) { setError(data.error || 'Failed to create tenant'); return; }
+      setWelcomeEmailSent(!!data.emailSent);
 
       // Upload logo if selected
       if (logoFile) {
         const formData = new FormData();
         formData.append('file', logoFile);
-        await fetch(`/api/logos/${slug}`, {
+        const logoRes = await fetch(`/api/logos/${slug}`, {
           method: 'POST',
           headers: { 'x-super-admin-email': getHeaders()['x-super-admin-email'] },
           body: formData,
         });
+        if (logoRes.ok) {
+          // Persist the filename on the tenant record so Header can render it
+          const ext = logoFile.name.split('.').pop()?.toLowerCase() || 'png';
+          await fetch(`/api/super-admin/tenants/${slug}`, {
+            method: 'PATCH',
+            headers: getHeaders(),
+            body: JSON.stringify({ logoFilename: `${slug}.${ext}` }),
+          });
+        }
       }
 
       setCreated(true);
@@ -144,6 +157,14 @@ export default function NewTenantPage() {
               <span className="text-xs font-semibold text-gray-500">Admin Email</span>
               <span className="text-sm text-gray-700">{adminEmail}</span>
             </div>
+            {sendWelcome && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-gray-500">Welcome Email</span>
+                <span className={`text-sm font-medium ${welcomeEmailSent ? 'text-green-600' : 'text-amber-600'}`}>
+                  {welcomeEmailSent ? 'Sent \u2713' : 'Failed \u2014 please notify admin manually'}
+                </span>
+              </div>
+            )}
           </div>
 
           <div className="flex gap-3">
@@ -276,6 +297,12 @@ export default function NewTenantPage() {
             </button>
           </div>
         </div>
+
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={sendWelcome} onChange={e => setSendWelcome(e.target.checked)}
+            className="h-4 w-4 accent-[#F1562A] rounded" />
+          <span className="text-sm text-gray-700">Send welcome email to the admin with login details</span>
+        </label>
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-lg px-3 py-2">{error}</div>

@@ -50,22 +50,25 @@ function emailShell(bodyContent: string, tenant: EmailTenantConfig) {
 export async function sendWelcomeEmail(to: string, name: string, password: string, tenant: EmailTenantConfig) {
   const appUrl = getAppUrl(tenant);
   const body = `
-    <p style="margin:0 0 14px;">Hi <strong>${name}</strong>,</p>
-    <p style="margin:0 0 8px;">Your account has been created on <strong>${tenant.name} ${tenant.subtitle}</strong>.</p>
-    <p style="margin:0 0 20px;color:#555;font-size:14px;">This is the portal used to convert raw call cycle files into Perigee Call Schedule format.</p>
+    <p style="margin:0 0 14px;">Hey <strong>${name}</strong>,</p>
+    <p style="margin:0 0 14px;">Welcome to the <strong>${tenant.name} Call Cycle Builder</strong>.</p>
+    <p style="margin:0 0 20px;color:#555;font-size:14px;">The site allows you to build your call cycle in a user-friendly format and then load it into the site to be downloaded in the format that Perigee expects.</p>
+    <p style="margin:0 0 12px;">Here&apos;s the link to gain access:</p>
     <table style="background:#f9f9f9;border:1px solid #eee;border-radius:6px;padding:14px 16px;width:100%;margin-bottom:20px;">
       <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Login URL</td><td style="font-size:13px;"><a href="${appUrl}/login" style="color:${tenant.primaryColor};">${appUrl}/login</a></td></tr>
-      <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Email</td><td style="font-size:13px;">${to}</td></tr>
-      <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Password</td><td style="font-size:13px;font-family:monospace;">${password}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Your username</td><td style="font-size:13px;">${to}</td></tr>
+      <tr><td style="padding:4px 12px 4px 0;color:#666;font-size:13px;">Your password</td><td style="font-size:13px;font-family:monospace;">${password}</td></tr>
     </table>
-    <p style="margin:0 0 20px;color:#666;font-size:13px;">Please change your password after your first login.</p>
+    <p style="margin:0 0 20px;color:#666;font-size:13px;">You&apos;ll be asked to change your password on first login.</p>
     <a href="${appUrl}/login" style="background:${tenant.primaryColor};color:#fff;text-decoration:none;padding:12px 24px;border-radius:4px;font-weight:bold;font-size:14px;display:inline-block;">Login Now</a>
+    <p style="margin:24px 0 4px;color:#333;">Thank you,</p>
+    <p style="margin:0;color:#333;font-weight:bold;">Team FieldGoose</p>
   `;
 
   return getResend().emails.send({
     from: getFrom(tenant),
     to,
-    subject: `Welcome to ${tenant.name} ${tenant.subtitle}`,
+    subject: `Welcome to ${tenant.name} Call Cycle Builder`,
     html: emailShell(body, tenant),
   });
 }
