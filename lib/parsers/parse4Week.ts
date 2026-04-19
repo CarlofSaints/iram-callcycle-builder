@@ -75,9 +75,10 @@ export function parse4Week(
       continue;
     }
 
-    // Find the day-of-week header row. Scan the first 10 rows because the
-    // layout can have a banner, an email/role row, and then the day headers.
-    const dayResult = findDayHeaderRow(data, 10);
+    // Find the day-of-week header row. Scan up to 50 rows to accommodate
+    // sheets with preamble blocks (weekly objectives, store name legend,
+    // rep name/role/email rows) above the actual day headers.
+    const dayResult = findDayHeaderRow(data, 50);
     if (!dayResult) {
       warnings.push(`No day columns found in sheet "${sheetName}"`);
       continue;
@@ -95,6 +96,20 @@ export function parse4Week(
 
     let currentWeek: number | null = null;
     let foundAnyWeek = false;
+
+    // Check if the day header row itself has a week marker in col A.
+    // This happens when a merged "WEEK 1" cell starts at the same row
+    // as the day headers (e.g. Frederic's sheet in the PTA file).
+    const headerRow = data[dayResult.dayRowIdx] || [];
+    const headerColA = String(headerRow[0] || '').trim();
+    const headerWeekMatch = headerColA.match(/week\s*[:\s]*\s*(\d+)/i);
+    if (headerWeekMatch) {
+      const weekNum = Number(headerWeekMatch[1]);
+      if (weekNum >= 1 && weekNum <= 6) {
+        currentWeek = weekNum;
+        foundAnyWeek = true;
+      }
+    }
 
     for (let rowIdx = dayResult.dayRowIdx + 1; rowIdx < data.length; rowIdx++) {
       const row = data[rowIdx] || [];
