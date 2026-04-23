@@ -36,6 +36,7 @@ export default function LoginPage() {
       localStorage.setItem('cc_session', JSON.stringify({
         id: data.id, name: data.name, surname: data.surname, email: data.email,
         isAdmin: data.isAdmin, role: data.role,
+        ...(data.isSuperAdmin ? { isSuperAdmin: true } : {}),
       }));
 
       if (data.forcePasswordChange) {

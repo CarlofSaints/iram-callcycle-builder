@@ -31,21 +31,54 @@ export async function POST(req: NextRequest) {
     const users = await loadUsers(slug);
     const idx = users.findIndex(u => u.email.toLowerCase() === email.toLowerCase().trim());
 
-    // Always return success to prevent email enumeration
-    if (idx === -1) {
+    if (idx !== -1) {
+      // Tenant-level user
+      const user = users[idx];
+      const tempPassword = generateTempPassword();
+
+      users[idx].password = await bcrypt.hash(tempPassword, 10);
+      users[idx].forcePasswordChange = true;
+      await saveUsers(slug, users);
+
+      await sendPasswordResetEmail(
+        user.email,
+        `${user.name} ${user.surname}`,
+        tempPassword,
+        tenant,
+      );
+
+      await addActivity(slug, {
+        id: randomUUID(),
+        timestamp: new Date().toISOString(),
+        type: 'password_changed',
+        userName: `${user.name} ${user.surname}`,
+        userEmail: user.email,
+        detail: `Password reset requested via forgot password`,
+      });
+
       return NextResponse.json({ ok: true });
     }
 
-    const user = users[idx];
+    // Fall through: check if it's a super-admin
+    const { loadSuperAdmins, saveSuperAdmins } = await import('@/lib/superAdminData');
+    const superAdmins = await loadSuperAdmins();
+    const saIdx = superAdmins.findIndex(a => a.email.toLowerCase() === email.toLowerCase().trim());
+
+    if (saIdx === -1) {
+      // No match — return success to prevent email enumeration
+      return NextResponse.json({ ok: true });
+    }
+
+    const sa = superAdmins[saIdx];
     const tempPassword = generateTempPassword();
 
-    users[idx].password = await bcrypt.hash(tempPassword, 10);
-    users[idx].forcePasswordChange = true;
-    await saveUsers(slug, users);
+    superAdmins[saIdx].passwordHash = await bcrypt.hash(tempPassword, 10);
+    superAdmins[saIdx].forcePasswordChange = true;
+    await saveSuperAdmins(superAdmins);
 
     await sendPasswordResetEmail(
-      user.email,
-      `${user.name} ${user.surname}`,
+      sa.email,
+      sa.name,
       tempPassword,
       tenant,
     );
@@ -54,8 +87,8 @@ export async function POST(req: NextRequest) {
       id: randomUUID(),
       timestamp: new Date().toISOString(),
       type: 'password_changed',
-      userName: `${user.name} ${user.surname}`,
-      userEmail: user.email,
+      userName: `${sa.name} (Platform Admin)`,
+      userEmail: sa.email,
       detail: `Password reset requested via forgot password`,
     });
 
