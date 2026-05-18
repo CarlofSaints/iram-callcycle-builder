@@ -65,6 +65,45 @@ function CompletionBadge({ pct }: { pct: number }) {
   );
 }
 
+// ─── Sortable table helpers ────────────────────────────────────────
+
+type SortDir = 'asc' | 'desc';
+interface SortState { col: string; dir: SortDir }
+
+function toggleSort(prev: SortState, col: string): SortState {
+  if (prev.col === col) return { col, dir: prev.dir === 'asc' ? 'desc' : 'asc' };
+  return { col, dir: 'asc' };
+}
+
+function SortIcon({ active, dir }: { active: boolean; dir: SortDir }) {
+  if (!active) return <span className="text-gray-300 ml-1">&#8597;</span>;
+  return <span className="text-[var(--color-primary)] ml-1">{dir === 'asc' ? '\u25B2' : '\u25BC'}</span>;
+}
+
+function SortTh({ label, col, sort, onSort, align = 'left' }: {
+  label: string; col: string; sort: SortState; onSort: (col: string) => void; align?: 'left' | 'right';
+}) {
+  return (
+    <th
+      onClick={() => onSort(col)}
+      className={`${align === 'right' ? 'text-right' : 'text-left'} px-4 py-3 text-xs font-semibold text-gray-500 uppercase cursor-pointer select-none hover:text-gray-700 transition-colors`}
+    >
+      {label}<SortIcon active={sort.col === col} dir={sort.dir} />
+    </th>
+  );
+}
+
+function sortRows<T>(rows: T[], sort: SortState, getVal: (row: T, col: string) => string | number): T[] {
+  if (!sort.col) return rows;
+  const sorted = [...rows].sort((a, b) => {
+    const va = getVal(a, sort.col);
+    const vb = getVal(b, sort.col);
+    if (typeof va === 'number' && typeof vb === 'number') return va - vb;
+    return String(va).localeCompare(String(vb));
+  });
+  return sort.dir === 'desc' ? sorted.reverse() : sorted;
+}
+
 /** Get first and last day of current month as YYYY-MM-DD */
 function currentMonthRange(): [string, string] {
   const now = new Date();
@@ -155,6 +194,12 @@ export default function DashboardPage() {
   // Date range (defaults to current month)
   const [[dateFrom, dateTo], setDateRange] = useState(currentMonthRange);
   const [datePreset, setDatePreset] = useState('this-month');
+
+  // Sort state for each table
+  const [tlSort, setTlSort] = useState<SortState>({ col: '', dir: 'asc' });
+  const [chSort, setChSort] = useState<SortState>({ col: '', dir: 'asc' });
+  const [usrSort, setUsrSort] = useState<SortState>({ col: '', dir: 'asc' });
+  const [logSort, setLogSort] = useState<SortState>({ col: '', dir: 'asc' });
 
   // Fetch schedule on mount
   useEffect(() => {
@@ -418,6 +463,58 @@ export default function DashboardPage() {
 
   const hasAnyFilter = channelFilter || userFilter || teamLeaderFilter || storeFilter || teamNameFilter;
 
+  // ─── Sorted table data ──────────────────────────────────────────
+
+  const sortedTL = useMemo(() => sortRows(teamLeaderSummary, tlSort, (r, c) => {
+    switch (c) {
+      case 'teamLeader': return r.teamLeader;
+      case 'subordinates': return r.subordinates;
+      case 'stores': return r.stores;
+      case 'weeklyVisits': return r.weeklyVisits;
+      case 'target': return r.target;
+      case 'actual': return r.actual;
+      case 'pct': return r.pct;
+      default: return '';
+    }
+  }), [teamLeaderSummary, tlSort]);
+
+  const sortedCh = useMemo(() => sortRows(channelSummary, chSort, (r, c) => {
+    switch (c) {
+      case 'channel': return r.channel;
+      case 'stores': return r.stores;
+      case 'users': return r.users;
+      case 'weeklyVisits': return r.weeklyVisits;
+      case 'target': return r.target;
+      case 'actual': return r.actual;
+      case 'pct': return r.pct;
+      default: return '';
+    }
+  }), [channelSummary, chSort]);
+
+  const sortedUsr = useMemo(() => sortRows(userSummary, usrSort, (r, c) => {
+    switch (c) {
+      case 'name': return r.name;
+      case 'teamLeader': return r.teamLeader;
+      case 'stores': return r.stores;
+      case 'channels': return r.channels;
+      case 'weeklyVisits': return r.weeklyVisits;
+      case 'target': return r.target;
+      case 'actual': return r.actual;
+      case 'pct': return r.pct;
+      default: return '';
+    }
+  }), [userSummary, usrSort]);
+
+  const sortedLog = useMemo(() => sortRows(teamLeaderUploadLog, logSort, (r, c) => {
+    switch (c) {
+      case 'teamLeader': return r.teamLeader;
+      case 'lastUploadedAt': return r.lastUploadedAt || '';
+      case 'uploadedBy': return r.uploadedBy || '';
+      case 'rowCount': return r.rowCount;
+      default: return '';
+    }
+  }), [teamLeaderUploadLog, logSort]);
+
   function clearAllFilters() {
     setChannelFilter('');
     setUserFilter('');
@@ -594,19 +691,19 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Team Leader</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Subordinates</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Stores</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Avg Weekly</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Target</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actual</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Completion</th>
+                      <SortTh label="Team Leader" col="teamLeader" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} />
+                      <SortTh label="Subordinates" col="subordinates" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Stores" col="stores" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Avg Weekly" col="weeklyVisits" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Target" col="target" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Actual" col="actual" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Completion" col="pct" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {teamLeaderSummary.length === 0 ? (
+                    {sortedTL.length === 0 ? (
                       <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
-                    ) : teamLeaderSummary.map(row => (
+                    ) : sortedTL.map(row => (
                       <tr key={row.teamLeader} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5 font-medium text-gray-900">{row.teamLeader}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.subordinates}</td>
@@ -617,7 +714,7 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={row.pct} /></td>
                       </tr>
                     ))}
-                    {teamLeaderSummary.length > 1 && (
+                    {sortedTL.length > 1 && (
                       <tr className="bg-gray-50 font-semibold border-t border-gray-200">
                         <td className="px-4 py-2.5 text-gray-700">Total</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.users}</td>
@@ -642,19 +739,19 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Channel</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Stores</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Users</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Avg Weekly</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Target</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actual</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Completion</th>
+                      <SortTh label="Channel" col="channel" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} />
+                      <SortTh label="Stores" col="stores" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Users" col="users" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Avg Weekly" col="weeklyVisits" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Target" col="target" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Actual" col="actual" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Completion" col="pct" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {channelSummary.length === 0 ? (
+                    {sortedCh.length === 0 ? (
                       <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
-                    ) : channelSummary.map(row => (
+                    ) : sortedCh.map(row => (
                       <tr key={row.channel} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5 font-medium text-gray-900">{row.channel}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.stores}</td>
@@ -665,7 +762,7 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={row.pct} /></td>
                       </tr>
                     ))}
-                    {channelSummary.length > 1 && (
+                    {sortedCh.length > 1 && (
                       <tr className="bg-gray-50 font-semibold border-t border-gray-200">
                         <td className="px-4 py-2.5 text-gray-700">Total</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.stores}</td>
@@ -690,20 +787,20 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">User</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Team Leader</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Stores</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Channels</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Avg Weekly</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Target</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actual</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Completion</th>
+                      <SortTh label="User" col="name" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} />
+                      <SortTh label="Team Leader" col="teamLeader" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} />
+                      <SortTh label="Stores" col="stores" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Channels" col="channels" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Avg Weekly" col="weeklyVisits" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Target" col="target" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Actual" col="actual" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Completion" col="pct" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {userSummary.length === 0 ? (
+                    {sortedUsr.length === 0 ? (
                       <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
-                    ) : userSummary.map(row => (
+                    ) : sortedUsr.map(row => (
                       <tr key={row.email} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5">
                           <p className="font-medium text-gray-900 text-sm">{row.name}</p>
@@ -718,9 +815,9 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={row.pct} /></td>
                       </tr>
                     ))}
-                    {userSummary.length > 1 && (
+                    {sortedUsr.length > 1 && (
                       <tr className="bg-gray-50 font-semibold border-t border-gray-200">
-                        <td className="px-4 py-2.5 text-gray-700">Total ({userSummary.length} users)</td>
+                        <td className="px-4 py-2.5 text-gray-700">Total ({sortedUsr.length} users)</td>
                         <td className="px-4 py-2.5"></td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.stores}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.channels}</td>
@@ -744,16 +841,16 @@ export default function DashboardPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="border-b border-gray-100">
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Team Leader</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Last Call Cycle Upload</th>
-                      <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Uploaded By</th>
-                      <th className="text-right px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Schedule Rows</th>
+                      <SortTh label="Team Leader" col="teamLeader" sort={logSort} onSort={c => setLogSort(toggleSort(logSort, c))} />
+                      <SortTh label="Last Call Cycle Upload" col="lastUploadedAt" sort={logSort} onSort={c => setLogSort(toggleSort(logSort, c))} />
+                      <SortTh label="Uploaded By" col="uploadedBy" sort={logSort} onSort={c => setLogSort(toggleSort(logSort, c))} />
+                      <SortTh label="Schedule Rows" col="rowCount" sort={logSort} onSort={c => setLogSort(toggleSort(logSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
-                    {teamLeaderUploadLog.length === 0 ? (
+                    {sortedLog.length === 0 ? (
                       <tr><td colSpan={4} className="px-4 py-6 text-center text-gray-400">No upload data</td></tr>
-                    ) : teamLeaderUploadLog.map(row => {
+                    ) : sortedLog.map(row => {
                       const uploadDate = row.lastUploadedAt ? new Date(row.lastUploadedAt) : null;
                       const daysSince = uploadDate ? Math.floor((Date.now() - uploadDate.getTime()) / (1000 * 60 * 60 * 24)) : null;
                       const stale = daysSince !== null && daysSince > 30;
