@@ -17,11 +17,16 @@ export interface ParseResult {
 
 export type ParseMode = 'team-leader' | 'user' | 'user-4wk' | 'auto';
 
+export interface ParseOptions {
+  ignoreSheetNames?: boolean;
+}
+
 export function parseCallCycleFile(
   buffer: Buffer,
   references: ReferenceData,
   teamControl?: TeamControlEntry[],
   parseMode: ParseMode = 'auto',
+  options?: ParseOptions,
 ): ParseResult {
   const workbook = XLSX.read(buffer, { type: 'buffer' });
 
@@ -48,7 +53,7 @@ export function parseCallCycleFile(
 
   if (parseMode === 'user-4wk') {
     format = 'user-4wk';
-    const result = parse4Week(workbook, references);
+    const result = parse4Week(workbook, references, options);
     entries = result.entries;
     warnings = result.warnings;
     return { format, entries, warnings };

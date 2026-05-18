@@ -31,9 +31,14 @@ import {
  *
  * Non-email sheets (e.g. a "REP INFO" tab) are skipped silently-with-warning.
  */
+export interface Parse4WeekOptions {
+  ignoreSheetNames?: boolean;
+}
+
 export function parse4Week(
   workbook: XLSX.WorkBook,
   references: ReferenceData,
+  options?: Parse4WeekOptions,
 ): { entries: ParsedEntry[]; warnings: string[] } {
   const entries: ParsedEntry[] = [];
   const warnings: string[] = [];
@@ -52,19 +57,70 @@ export function parse4Week(
     const sheet = workbook.Sheets[sheetName];
     if (!sheet) continue;
 
-    // Only process sheets named after an email address. Anything else (e.g.
-    // "REP INFO") is a legend tab that should be ignored with a warning.
+    // Resolve the user email for this sheet.
     const trimmed = sheetName.trim();
-    if (!trimmed.includes('@')) {
+    let sheetEmail = '';
+    let firstName = '';
+    let surname = '';
+
+    if (trimmed.includes('@')) {
+      // Sheet name IS an email address — use directly.
+      sheetEmail = trimmed.toLowerCase();
+      const ref = refLookup.get(sheetEmail);
+      const localPart = sheetEmail.split('@')[0];
+      firstName = ref?.firstName || localPart;
+      surname = ref?.surname || '';
+    } else if (options?.ignoreSheetNames) {
+      // ignoreSheetNames: try to find the email from the sheet content or reference data.
+      warnings.push(`Sheet "${sheetName}" — name is not an email address, attempting to resolve...`);
+
+      const sheetData = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, { header: 1, defval: '' });
+
+      // 1. Scan first 10 rows for any cell containing an email address
+      let foundEmail = '';
+      for (let r = 0; r < Math.min(10, sheetData.length); r++) {
+        for (const cell of (sheetData[r] || [])) {
+          const cellStr = String(cell || '').trim();
+          const emailMatch = cellStr.match(/([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/);
+          if (emailMatch) {
+            foundEmail = emailMatch[1].toLowerCase();
+            break;
+          }
+        }
+        if (foundEmail) break;
+      }
+
+      if (foundEmail) {
+        sheetEmail = foundEmail;
+        const ref = refLookup.get(sheetEmail);
+        firstName = ref?.firstName || sheetEmail.split('@')[0];
+        surname = ref?.surname || '';
+        warnings.push(`Sheet "${sheetName}" — resolved email from content: ${sheetEmail}`);
+      } else {
+        // 2. Try matching sheet name against reference data (first name or full name)
+        const nameLower = trimmed.toLowerCase();
+        for (const u of references.users) {
+          if (u.firstName.toLowerCase() === nameLower ||
+              `${u.firstName} ${u.surname}`.toLowerCase().trim() === nameLower ||
+              u.userEmail.split('@')[0].toLowerCase() === nameLower) {
+            sheetEmail = u.userEmail.toLowerCase();
+            firstName = u.firstName;
+            surname = u.surname;
+            warnings.push(`Sheet "${sheetName}" — matched to user ${sheetEmail} via reference data`);
+            break;
+          }
+        }
+      }
+
+      if (!sheetEmail) {
+        warnings.push(`Sheet "${sheetName}" skipped — could not resolve an email address from content or reference data.`);
+        continue;
+      }
+    } else {
+      // Default: skip non-email sheets with a warning.
       warnings.push(`Sheet "${sheetName}" skipped — sheet name is not an email address.`);
       continue;
     }
-
-    const sheetEmail = trimmed.toLowerCase();
-    const ref = refLookup.get(sheetEmail);
-    const localPart = sheetEmail.split('@')[0];
-    const firstName = ref?.firstName || localPart;
-    const surname = ref?.surname || '';
 
     const data = XLSX.utils.sheet_to_json<(string | number | null)[]>(sheet, {
       header: 1,

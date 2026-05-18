@@ -25,7 +25,7 @@ export default function UploadPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
 
-  async function handleUpload() {
+  async function handleUpload(forceIgnoreSheetNames = false) {
     if (!file || !session) return;
     setUploading(true);
     setResult(null);
@@ -36,6 +36,7 @@ export default function UploadPage() {
       formData.append('userEmail', session.email);
       formData.append('parseMode', parseMode);
       if (ccEmail) formData.append('ccEmail', ccEmail);
+      if (forceIgnoreSheetNames) formData.append('ignoreSheetNames', '1');
 
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await res.json();
@@ -46,6 +47,11 @@ export default function UploadPage() {
       setUploading(false);
     }
   }
+
+  // Check if the failure was caused by non-email sheet names
+  const hasSheetNameWarnings = !result?.ok && result?.warnings?.some(
+    w => w.includes('sheet name is not an email address')
+  );
 
   if (loading || !session) return null;
 
@@ -167,7 +173,7 @@ export default function UploadPage() {
           </div>
 
           <button
-            onClick={handleUpload}
+            onClick={() => handleUpload()}
             disabled={!file || uploading}
             className="bg-[var(--color-primary)] hover:bg-[var(--color-primary-dark)] disabled:opacity-50 text-white text-sm font-bold px-6 py-2.5 rounded-lg transition-colors self-start"
           >
@@ -191,12 +197,25 @@ export default function UploadPage() {
                   )}
                 </div>
               ) : (
-                <div>
+                <div className="flex flex-col gap-3">
                   <p className="font-semibold text-red-800">{result.error}</p>
                   {result.warnings && result.warnings.length > 0 && (
                     <ul className="list-disc list-inside text-red-600 text-xs mt-2">
                       {result.warnings.map((w, i) => <li key={i}>{w}</li>)}
                     </ul>
+                  )}
+                  {hasSheetNameWarnings && (
+                    <div className="mt-2 bg-amber-50 border border-amber-300 rounded-lg p-3">
+                      <p className="text-sm text-amber-800 font-medium">Some sheets were skipped because their names are not email addresses.</p>
+                      <p className="text-xs text-amber-700 mt-1">Click below to retry — the parser will attempt to find the email from the sheet content or match the sheet name against your control files.</p>
+                      <button
+                        onClick={() => handleUpload(true)}
+                        disabled={uploading}
+                        className="mt-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white text-xs font-bold px-4 py-2 rounded-lg transition-colors"
+                      >
+                        {uploading ? 'Processing...' : 'Load Anyway'}
+                      </button>
+                    </div>
                   )}
                 </div>
               )}

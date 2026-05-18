@@ -126,8 +126,8 @@ export function parseEmailSheet(
       continue;
     }
 
-    // Find day header row
-    const dayResult = findDayHeaderRow(data, 5);
+    // Find day header row — scan up to 50 rows to handle files with preamble
+    const dayResult = findDayHeaderRow(data, 50);
     if (!dayResult) {
       warnings.push(`No day columns found in sheet "${sheetName}"`);
       continue;

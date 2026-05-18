@@ -33,13 +33,18 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: 'No file uploaded' }, { status: 400 });
     }
 
+    const ignoreSheetNames = formData.get('ignoreSheetNames') === '1';
+
     const buffer = Buffer.from(await file.arrayBuffer());
     const references = await loadReferences(slug);
     const teamControlData = await loadTeamControl(slug);
     const teamControlEntries = teamControlData?.teams;
 
     // Parse the file
-    const { format, entries, warnings } = parseCallCycleFile(buffer, references, teamControlEntries, parseMode);
+    const { format, entries, warnings } = parseCallCycleFile(
+      buffer, references, teamControlEntries, parseMode,
+      { ignoreSheetNames },
+    );
 
     // Warn if reference data is empty and format requires it
     const needsRefData = ['josh-standard', 'josh-alt', 'email-sheet', 'simple-name'].includes(format);
