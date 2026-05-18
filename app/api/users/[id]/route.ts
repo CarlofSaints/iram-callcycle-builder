@@ -17,13 +17,13 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     if (body.name !== undefined) users[idx].name = body.name;
     if (body.surname !== undefined) users[idx].surname = body.surname;
     if (body.email !== undefined) users[idx].email = body.email;
-    if (body.isAdmin !== undefined) {
-      users[idx].isAdmin = body.isAdmin;
-      users[idx].role = body.isAdmin ? 'admin' : (users[idx].role === 'admin' ? 'user' : users[idx].role);
-    }
     if (body.role !== undefined) {
       users[idx].role = body.role;
-      users[idx].isAdmin = body.role === 'admin';
+      users[idx].isAdmin = body.role === 'super_admin';
+    } else if (body.isAdmin !== undefined) {
+      // Legacy path: derive role from isAdmin
+      users[idx].isAdmin = body.isAdmin;
+      users[idx].role = body.isAdmin ? 'super_admin' : (users[idx].role === 'super_admin' ? 'rep' : users[idx].role);
     }
     if (body.password) {
       users[idx].password = await bcrypt.hash(body.password, 10);

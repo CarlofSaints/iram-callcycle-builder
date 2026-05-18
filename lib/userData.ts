@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import { put, get } from '@vercel/blob';
+import { migrateRole, type TenantRole } from './roles';
 
 export interface User {
   id: string;
@@ -9,7 +10,7 @@ export interface User {
   email: string;
   password: string;
   isAdmin: boolean;
-  role: 'admin' | 'manager' | 'user';
+  role: TenantRole;
   forcePasswordChange: boolean;
   firstLoginAt: string | null;
   createdAt: string;
@@ -32,10 +33,11 @@ export async function loadUsers(tenantSlug: string): Promise<User[]> {
       try {
         if (fs.existsSync(f)) {
           const users = JSON.parse(fs.readFileSync(f, 'utf-8')) as User[];
-          // Backfill role from isAdmin for legacy data
+          // Migrate role to new 4-tier system
           return users.map(u => ({
             ...u,
-            role: u.role || (u.isAdmin ? 'admin' : 'user'),
+            role: migrateRole(u.role, u.isAdmin),
+            isAdmin: migrateRole(u.role, u.isAdmin) === 'super_admin',
           }));
         }
       } catch { /* continue */ }
@@ -49,9 +51,11 @@ export async function loadUsers(tenantSlug: string): Promise<User[]> {
     if (result && result.statusCode === 200) {
       const text = await new Response(result.stream).text();
       const users = JSON.parse(text) as User[];
+      // Migrate role to new 4-tier system
       return users.map(u => ({
         ...u,
-        role: u.role || (u.isAdmin ? 'admin' : 'user'),
+        role: migrateRole(u.role, u.isAdmin),
+        isAdmin: migrateRole(u.role, u.isAdmin) === 'super_admin',
       }));
     }
   } catch (err) {

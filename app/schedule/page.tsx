@@ -3,6 +3,7 @@
 import { useAuth } from '@/lib/useAuth';
 import Header from '@/components/Header';
 import { useEffect, useState } from 'react';
+import { roleAtLeast } from '@/lib/roles';
 
 interface ScheduleRow {
   userEmail: string;
@@ -62,13 +63,21 @@ export default function SchedulePage() {
   const [clearInput, setClearInput] = useState('');
   const [clearing, setClearing] = useState(false);
 
+  const isRep = session ? !roleAtLeast(session.role, 'team_leader') : false;
+  const canEdit = session ? roleAtLeast(session.role, 'admin') : false;
+
   useEffect(() => {
     if (session) {
       fetch('/api/schedule', { cache: 'no-store' }).then(r => r.json()).then(setSchedule);
     }
   }, [session]);
 
-  const filtered = schedule.filter(row => {
+  // Rep data restriction: only see own rows
+  const effectiveSchedule = isRep && session
+    ? schedule.filter(r => r.userEmail.toLowerCase() === session.email.toLowerCase())
+    : schedule;
+
+  const filtered = effectiveSchedule.filter(row => {
     const matchText = !filter ||
       row.userEmail.toLowerCase().includes(filter.toLowerCase()) ||
       row.firstName.toLowerCase().includes(filter.toLowerCase()) ||
@@ -80,7 +89,7 @@ export default function SchedulePage() {
     return matchText && matchAction;
   });
 
-  // Map filtered rows back to their real index in the full schedule array
+  // Map filtered rows back to their real index in the full (unfiltered) schedule array
   function getRealIndex(filteredIdx: number): number {
     const row = filtered[filteredIdx];
     return schedule.indexOf(row);
@@ -239,7 +248,9 @@ export default function SchedulePage() {
         <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4 flex items-center justify-between">
           <div>
             <h1 className="text-xl font-bold text-gray-900">Call Schedule</h1>
-            <p className="text-sm text-gray-500 mt-0.5">{schedule.length} total rows</p>
+            <p className="text-sm text-gray-500 mt-0.5">
+              {effectiveSchedule.length} total rows{isRep ? ' (your data)' : ''}
+            </p>
           </div>
           <div className="flex items-center gap-3">
             <button
@@ -249,7 +260,7 @@ export default function SchedulePage() {
             >
               {downloading ? 'Generating...' : 'Download Excel'}
             </button>
-            {session?.isAdmin && (
+            {canEdit && session?.role === 'super_admin' && (
               <button
                 onClick={openClearModal}
                 disabled={schedule.length === 0}
@@ -281,7 +292,7 @@ export default function SchedulePage() {
             <option value="REMOVE">REMOVE</option>
             <option value="LIVE">LIVE</option>
           </select>
-          <span className="text-sm text-gray-500 self-center">Showing {filtered.length} of {schedule.length}</span>
+          <span className="text-sm text-gray-500 self-center">Showing {filtered.length} of {effectiveSchedule.length}</span>
         </div>
 
         {editError && (
@@ -305,13 +316,13 @@ export default function SchedulePage() {
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Channel</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Cycle</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Days</th>
-                  <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>
+                  {canEdit && <th className="text-center px-4 py-3 text-xs font-semibold text-gray-500 uppercase">Actions</th>}
                 </tr>
               </thead>
               <tbody>
                 {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">
-                    {schedule.length === 0 ? 'No schedule data yet. Upload a call cycle file to get started.' : 'No rows match your filter.'}
+                  <tr><td colSpan={canEdit ? 9 : 8} className="px-4 py-8 text-center text-gray-400">
+                    {effectiveSchedule.length === 0 ? 'No schedule data yet. Upload a call cycle file to get started.' : 'No rows match your filter.'}
                   </td></tr>
                 )}
                 {filtered.map((row, i) => {
@@ -413,29 +424,31 @@ export default function SchedulePage() {
                           </div>
                         </td>
                         {/* Save / Cancel */}
-                        <td className="px-4 py-2 text-center">
-                          <div className="flex items-center justify-center gap-1">
-                            <button
-                              onClick={handleSave}
-                              disabled={saving}
-                              title="Save"
-                              className="text-green-600 hover:text-green-800 disabled:opacity-50 p-1"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
-                              </svg>
-                            </button>
-                            <button
-                              onClick={cancelEdit}
-                              title="Cancel"
-                              className="text-gray-400 hover:text-gray-600 p-1"
-                            >
-                              <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
-                                <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
-                              </svg>
-                            </button>
-                          </div>
-                        </td>
+                        {canEdit && (
+                          <td className="px-4 py-2 text-center">
+                            <div className="flex items-center justify-center gap-1">
+                              <button
+                                onClick={handleSave}
+                                disabled={saving}
+                                title="Save"
+                                className="text-green-600 hover:text-green-800 disabled:opacity-50 p-1"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                              <button
+                                onClick={cancelEdit}
+                                title="Cancel"
+                                className="text-gray-400 hover:text-gray-600 p-1"
+                              >
+                                <svg xmlns="http://www.w3.org/2000/svg" className="h-5 w-5" viewBox="0 0 20 20" fill="currentColor">
+                                  <path fillRule="evenodd" d="M4.293 4.293a1 1 0 011.414 0L10 8.586l4.293-4.293a1 1 0 111.414 1.414L11.414 10l4.293 4.293a1 1 0 01-1.414 1.414L10 11.414l-4.293 4.293a1 1 0 01-1.414-1.414L8.586 10 4.293 5.707a1 1 0 010-1.414z" clipRule="evenodd" />
+                                </svg>
+                              </button>
+                            </div>
+                          </td>
+                        )}
                       </tr>
                     );
                   }
@@ -458,30 +471,32 @@ export default function SchedulePage() {
                       <td className="px-4 py-2.5 text-gray-500">{row.channel || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-500">{formatCycle(row.cycle)}</td>
                       <td className="px-4 py-2.5 text-gray-500 text-xs">{row.days.join(', ')}</td>
-                      <td className="px-4 py-2.5 text-center">
-                        <div className="flex items-center justify-center gap-1">
-                          <button
-                            onClick={() => startEdit(i)}
-                            disabled={editingIdx !== null}
-                            title="Edit row"
-                            className="text-gray-400 hover:text-[var(--color-primary)] disabled:opacity-30 p-1 transition-colors"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                              <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
-                            </svg>
-                          </button>
-                          <button
-                            onClick={() => handleDelete(i)}
-                            disabled={editingIdx !== null}
-                            title="Delete row"
-                            className="text-gray-400 hover:text-red-500 disabled:opacity-30 p-1 transition-colors"
-                          >
-                            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                              <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
-                            </svg>
-                          </button>
-                        </div>
-                      </td>
+                      {canEdit && (
+                        <td className="px-4 py-2.5 text-center">
+                          <div className="flex items-center justify-center gap-1">
+                            <button
+                              onClick={() => startEdit(i)}
+                              disabled={editingIdx !== null}
+                              title="Edit row"
+                              className="text-gray-400 hover:text-[var(--color-primary)] disabled:opacity-30 p-1 transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path d="M13.586 3.586a2 2 0 112.828 2.828l-.793.793-2.828-2.828.793-.793zM11.379 5.793L3 14.172V17h2.828l8.38-8.379-2.83-2.828z" />
+                              </svg>
+                            </button>
+                            <button
+                              onClick={() => handleDelete(i)}
+                              disabled={editingIdx !== null}
+                              title="Delete row"
+                              className="text-gray-400 hover:text-red-500 disabled:opacity-30 p-1 transition-colors"
+                            >
+                              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
+                                <path fillRule="evenodd" d="M9 2a1 1 0 00-.894.553L7.382 4H4a1 1 0 000 2v10a2 2 0 002 2h8a2 2 0 002-2V6a1 1 0 100-2h-3.382l-.724-1.447A1 1 0 0011 2H9zM7 8a1 1 0 012 0v6a1 1 0 11-2 0V8zm5-1a1 1 0 00-1 1v6a1 1 0 102 0V8a1 1 0 00-1-1z" clipRule="evenodd" />
+                              </svg>
+                            </button>
+                          </div>
+                        </td>
+                      )}
                     </tr>
                   );
                 })}

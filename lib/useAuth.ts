@@ -2,8 +2,9 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { migrateRole, type TenantRole, ROLE_HIERARCHY } from './roles';
 
-export type TenantRole = 'admin' | 'manager' | 'user';
+export type { TenantRole } from './roles';
 
 export interface Session {
   id: string;
@@ -17,11 +18,12 @@ export interface Session {
 /**
  * Hook for tenant-level auth.
  * `minRole` controls minimum required role:
- *   'admin'   → only admin (and super-admins recognised as admin)
- *   'manager' → admin or manager
- *   'user'    → any authenticated user (default)
+ *   'super_admin' → only super_admin (and platform super-admins)
+ *   'admin'       → super_admin or admin
+ *   'team_leader' → super_admin, admin, or team_leader
+ *   'rep'         → any authenticated user (default)
  */
-export function useAuth(minRole: TenantRole = 'user') {
+export function useAuth(minRole: TenantRole = 'rep') {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const router = useRouter();
@@ -34,21 +36,22 @@ export function useAuth(minRole: TenantRole = 'user') {
     }
     try {
       const s: Session = JSON.parse(raw);
-      // Backfill role if missing (old sessions)
-      if (!s.role) {
-        s.role = s.isAdmin ? 'admin' : 'user';
-      }
+      // Migrate old role values to new 4-tier system
+      s.role = migrateRole(s.role, s.isAdmin);
+      // Sync isAdmin to match role
+      s.isAdmin = s.role === 'super_admin';
 
-      // Check role hierarchy: admin > manager > user
-      const hierarchy: TenantRole[] = ['user', 'manager', 'admin'];
-      const userLevel = hierarchy.indexOf(s.role);
-      const requiredLevel = hierarchy.indexOf(minRole);
+      // Check role hierarchy
+      const userLevel = ROLE_HIERARCHY.indexOf(s.role);
+      const requiredLevel = ROLE_HIERARCHY.indexOf(minRole);
 
       if (userLevel < requiredLevel) {
         router.replace('/');
         return;
       }
 
+      // Persist migrated session back to localStorage
+      localStorage.setItem('cc_session', JSON.stringify(s));
       setSession(s);
     } catch {
       localStorage.removeItem('cc_session');
@@ -70,6 +73,5 @@ export function useAuth(minRole: TenantRole = 'user') {
  * Helper to check if a session meets a minimum role.
  */
 export function hasMinRole(session: Session, minRole: TenantRole): boolean {
-  const hierarchy: TenantRole[] = ['user', 'manager', 'admin'];
-  return hierarchy.indexOf(session.role) >= hierarchy.indexOf(minRole);
+  return ROLE_HIERARCHY.indexOf(session.role) >= ROLE_HIERARCHY.indexOf(minRole);
 }

@@ -42,7 +42,7 @@ interface CronLogEntry {
 // ─── Page ────────────────────────────────────────────────────────────
 
 export default function PerigeeAdminPage() {
-  const { session, loading, logout } = useAuth('admin');
+  const { session, loading, logout } = useAuth('super_admin');
 
   // Config state
   const [config, setConfig] = useState<PerigeeConfig>({

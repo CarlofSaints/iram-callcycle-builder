@@ -7,7 +7,7 @@ import { useState, useRef } from 'react';
 type ParseMode = 'team-leader' | 'user' | 'user-4wk';
 
 export default function UploadPage() {
-  const { session, loading, logout } = useAuth('manager');
+  const { session, loading, logout } = useAuth('admin');
   const [file, setFile] = useState<File | null>(null);
   const [ccEmail, setCcEmail] = useState('');
   const [parseMode, setParseMode] = useState<ParseMode>('user-4wk');

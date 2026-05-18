@@ -1,10 +1,9 @@
 import { NextResponse } from 'next/server';
 import { loadUsers } from './userData';
 import { isSuperAdmin } from './superAdminData';
+import { migrateRole, ROLE_HIERARCHY, type TenantRole } from './roles';
 
-export type TenantRole = 'admin' | 'manager' | 'user';
-
-const HIERARCHY: TenantRole[] = ['user', 'manager', 'admin'];
+export type { TenantRole } from './roles';
 
 /**
  * Server-side role check for API routes.
@@ -23,10 +22,10 @@ export async function checkRole(
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
 
-  // Super-admins have implicit admin on every tenant
+  // Super-admins have implicit super_admin on every tenant
   const superAdmin = await isSuperAdmin(userEmail);
   if (superAdmin) {
-    return { ok: true, role: 'admin' };
+    return { ok: true, role: 'super_admin' };
   }
 
   const users = await loadUsers(tenantSlug);
@@ -35,9 +34,9 @@ export async function checkRole(
     return { ok: false, response: NextResponse.json({ error: 'Unauthorized' }, { status: 401 }) };
   }
 
-  const effectiveRole: TenantRole = user.role || (user.isAdmin ? 'admin' : 'user');
-  const userLevel = HIERARCHY.indexOf(effectiveRole);
-  const requiredLevel = HIERARCHY.indexOf(minRole);
+  const effectiveRole: TenantRole = migrateRole(user.role, user.isAdmin);
+  const userLevel = ROLE_HIERARCHY.indexOf(effectiveRole);
+  const requiredLevel = ROLE_HIERARCHY.indexOf(minRole);
 
   if (userLevel < requiredLevel) {
     return {

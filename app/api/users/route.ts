@@ -17,7 +17,7 @@ export async function POST(req: NextRequest) {
   const slug = await getTenantSlug();
   const tenant = await getTenantEmailConfig();
 
-  const { name, surname, email, password, isAdmin, forcePasswordChange } = await req.json();
+  const { name, surname, email, password, role: requestedRole, isAdmin, forcePasswordChange } = await req.json();
   if (!name || !surname || !email || !password) {
     return NextResponse.json({ error: 'Missing fields' }, { status: 400 });
   }
@@ -28,14 +28,15 @@ export async function POST(req: NextRequest) {
   }
 
   const hashed = await bcrypt.hash(password, 10);
-  const role = isAdmin ? 'admin' : 'user';
+  // Prefer explicit role field; fall back to isAdmin for legacy callers
+  const role = requestedRole || (isAdmin ? 'super_admin' : 'rep');
   const user: User = {
     id: randomUUID(),
     name,
     surname,
     email,
     password: hashed,
-    isAdmin: !!isAdmin,
+    isAdmin: role === 'super_admin',
     role,
     forcePasswordChange: forcePasswordChange !== false,
     firstLoginAt: null,

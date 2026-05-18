@@ -11,7 +11,7 @@ const NO_CACHE = { 'Cache-Control': 'no-store, no-cache, must-revalidate' };
 export async function GET(req: NextRequest) {
   const slug = await getTenantSlug();
   const userEmail = req.headers.get('x-user-email') || '';
-  const roleCheck = await checkRole(slug, userEmail, 'admin');
+  const roleCheck = await checkRole(slug, userEmail, 'super_admin');
   if (!roleCheck.ok) return roleCheck.response;
 
   const schedule = await loadScheduleConfig(slug);
@@ -22,7 +22,7 @@ export async function PUT(req: NextRequest) {
   const slug = await getTenantSlug();
   const body = await req.json();
   const userEmail = body.userEmail || '';
-  const roleCheck = await checkRole(slug, userEmail, 'admin');
+  const roleCheck = await checkRole(slug, userEmail, 'super_admin');
   if (!roleCheck.ok) return roleCheck.response;
 
   try {

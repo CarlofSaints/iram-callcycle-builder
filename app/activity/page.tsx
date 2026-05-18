@@ -24,7 +24,7 @@ const TYPE_LABELS: Record<string, { label: string; color: string }> = {
 };
 
 export default function ActivityPage() {
-  const { session, loading, logout } = useAuth('manager');
+  const { session, loading, logout } = useAuth('admin');
   const [entries, setEntries] = useState<ActivityEntry[]>([]);
 
   useEffect(() => {

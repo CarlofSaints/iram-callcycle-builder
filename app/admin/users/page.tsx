@@ -3,6 +3,7 @@
 import { useAuth } from '@/lib/useAuth';
 import Header from '@/components/Header';
 import { useEffect, useState } from 'react';
+import { ROLES, getRoleDef, type TenantRole } from '@/lib/roles';
 
 interface User {
   id: string;
@@ -10,6 +11,7 @@ interface User {
   surname: string;
   email: string;
   isAdmin: boolean;
+  role: TenantRole;
   forcePasswordChange: boolean;
   firstLoginAt: string | null;
   createdAt: string;
@@ -30,8 +32,17 @@ function Toast({ toast, onClose }: { toast: ToastData; onClose: () => void }) {
   );
 }
 
+function RoleBadge({ role }: { role: TenantRole }) {
+  const def = getRoleDef(role);
+  return (
+    <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${def.bgClass} ${def.textClass}`}>
+      {def.label}
+    </span>
+  );
+}
+
 export default function AdminUsersPage() {
-  const { session, loading, logout } = useAuth('admin');
+  const { session, loading, logout } = useAuth('super_admin');
   const [users, setUsers] = useState<User[]>([]);
   const [toast, setToast] = useState<ToastData | null>(null);
 
@@ -40,7 +51,7 @@ export default function AdminUsersPage() {
   const [addSurname, setAddSurname] = useState('');
   const [addEmail, setAddEmail] = useState('');
   const [addPw, setAddPw] = useState('');
-  const [addAdmin, setAddAdmin] = useState(false);
+  const [addRole, setAddRole] = useState<TenantRole>('rep');
   const [addForcePwChange, setAddForcePwChange] = useState(true);
   const [showAddPw, setShowAddPw] = useState(false);
   const [sendWelcome, setSendWelcome] = useState(true);
@@ -51,7 +62,7 @@ export default function AdminUsersPage() {
   const [editName, setEditName] = useState('');
   const [editSurname, setEditSurname] = useState('');
   const [editEmail, setEditEmail] = useState('');
-  const [editAdmin, setEditAdmin] = useState(false);
+  const [editRole, setEditRole] = useState<TenantRole>('rep');
   const [editPw, setEditPw] = useState('');
   const [showEditPw, setShowEditPw] = useState(false);
   const [sendReset, setSendReset] = useState(false);
@@ -74,7 +85,7 @@ export default function AdminUsersPage() {
       const res = await fetch('/api/users', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: addName, surname: addSurname, email: addEmail, password: addPw, isAdmin: addAdmin, forcePasswordChange: addForcePwChange }),
+        body: JSON.stringify({ name: addName, surname: addSurname, email: addEmail, password: addPw, role: addRole, forcePasswordChange: addForcePwChange }),
       });
       const data = await res.json();
       if (!res.ok) { notify(data.error || 'Failed to create user', 'error'); return; }
@@ -87,7 +98,7 @@ export default function AdminUsersPage() {
         });
       }
       notify(`User ${addName} ${addSurname} created${sendWelcome ? ' — welcome email sent' : ''}`);
-      setAddName(''); setAddSurname(''); setAddEmail(''); setAddPw(''); setAddAdmin(false); setAddForcePwChange(true); setSendWelcome(true);
+      setAddName(''); setAddSurname(''); setAddEmail(''); setAddPw(''); setAddRole('rep'); setAddForcePwChange(true); setSendWelcome(true);
       fetchUsers();
     } finally {
       setAddLoading(false);
@@ -99,7 +110,7 @@ export default function AdminUsersPage() {
     setEditName(user.name);
     setEditSurname(user.surname);
     setEditEmail(user.email);
-    setEditAdmin(user.isAdmin);
+    setEditRole(user.role || 'rep');
     setEditPw('');
     setShowEditPw(false);
     setSendReset(false);
@@ -110,7 +121,7 @@ export default function AdminUsersPage() {
     if (!editUser) return;
     setEditLoading(true);
     try {
-      const body: Record<string, unknown> = { name: editName, surname: editSurname, email: editEmail, isAdmin: editAdmin };
+      const body: Record<string, unknown> = { name: editName, surname: editSurname, email: editEmail, role: editRole };
       if (editPw) body.password = editPw;
 
       const res = await fetch(`/api/users/${editUser.id}`, {
@@ -184,12 +195,19 @@ export default function AdminUsersPage() {
                 </button>
               </div>
             </div>
-            <div className="sm:col-span-2 flex flex-col gap-3">
-              <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                <input type="checkbox" checked={addAdmin} onChange={e => setAddAdmin(e.target.checked)}
-                  className="accent-[var(--color-primary)]" />
-                Admin user
-              </label>
+            <div className="flex flex-col gap-1">
+              <label className="text-xs text-gray-500 font-medium">Role</label>
+              <select
+                value={addRole}
+                onChange={e => setAddRole(e.target.value as TenantRole)}
+                className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+              >
+                {ROLES.map(r => (
+                  <option key={r.key} value={r.key}>{r.label}</option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-3 justify-end">
               <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                 <input type="checkbox" checked={addForcePwChange} onChange={e => setAddForcePwChange(e.target.checked)}
                   className="accent-[var(--color-primary)]" />
@@ -230,9 +248,7 @@ export default function AdminUsersPage() {
                     <td className="px-6 py-3 font-medium text-gray-900">{u.name} {u.surname}</td>
                     <td className="px-6 py-3 text-gray-600">{u.email}</td>
                     <td className="px-6 py-3">
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${u.isAdmin ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-600'}`}>
-                        {u.isAdmin ? 'Admin' : 'User'}
-                      </span>
+                      <RoleBadge role={u.role || 'rep'} />
                     </td>
                     <td className="px-6 py-3 text-gray-500 text-xs">
                       {u.firstLoginAt ? new Date(u.firstLoginAt).toLocaleDateString() : 'Never'}
@@ -277,6 +293,18 @@ export default function AdminUsersPage() {
                   className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]" />
               </div>
               <div className="flex flex-col gap-1">
+                <label className="text-xs text-gray-500 font-medium">Role</label>
+                <select
+                  value={editRole}
+                  onChange={e => setEditRole(e.target.value as TenantRole)}
+                  className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                >
+                  {ROLES.map(r => (
+                    <option key={r.key} value={r.key}>{r.label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1">
                 <label className="text-xs text-gray-500 font-medium">New Password <span className="text-gray-400 font-normal">(leave blank to keep current)</span></label>
                 <div className="relative">
                   <input type={showEditPw ? 'text' : 'password'} value={editPw} onChange={e => setEditPw(e.target.value)}
@@ -289,10 +317,6 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div className="flex flex-col gap-2">
-                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
-                  <input type="checkbox" checked={editAdmin} onChange={e => setEditAdmin(e.target.checked)} className="accent-[var(--color-primary)]" />
-                  Admin user
-                </label>
                 {editPw && (
                   <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                     <input type="checkbox" checked={sendReset} onChange={e => setSendReset(e.target.checked)} className="accent-[var(--color-primary)]" />

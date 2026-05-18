@@ -3,6 +3,7 @@
 import { useAuth } from '@/lib/useAuth';
 import Header from '@/components/Header';
 import { useEffect, useState, useMemo, useCallback } from 'react';
+import { roleAtLeast } from '@/lib/roles';
 
 interface ScheduleRow {
   userEmail: string;
@@ -187,42 +188,49 @@ export default function DashboardPage() {
     else if (preset === 'last-7') setDateRange(last7DaysRange());
   }
 
+  // ─── Rep data restriction ──────────────────────────────────────
+  const isRep = session ? !roleAtLeast(session.role, 'team_leader') : false;
+  const effectiveSchedule = useMemo(() => {
+    if (!isRep || !session) return schedule;
+    return schedule.filter(r => r.userEmail.toLowerCase() === session.email.toLowerCase());
+  }, [schedule, isRep, session]);
+
   // ─── derive filter options ──────────────────────────────────────
 
   const channels = useMemo(() => {
     const set = new Set<string>();
-    schedule.forEach(r => { if (r.channel) set.add(r.channel); });
+    effectiveSchedule.forEach(r => { if (r.channel) set.add(r.channel); });
     return [...set].sort();
-  }, [schedule]);
+  }, [effectiveSchedule]);
 
   const users = useMemo(() => {
     const map = new Map<string, string>();
-    schedule.forEach(r => { map.set(r.userEmail.toLowerCase(), `${r.firstName} ${r.surname}`); });
+    effectiveSchedule.forEach(r => { map.set(r.userEmail.toLowerCase(), `${r.firstName} ${r.surname}`); });
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [schedule]);
+  }, [effectiveSchedule]);
 
   const teamLeaders = useMemo(() => {
     const set = new Set<string>();
-    schedule.forEach(r => { if (r.teamLeader) set.add(r.teamLeader); });
+    effectiveSchedule.forEach(r => { if (r.teamLeader) set.add(r.teamLeader); });
     return [...set].sort();
-  }, [schedule]);
+  }, [effectiveSchedule]);
 
   const stores = useMemo(() => {
     const map = new Map<string, string>();
-    schedule.forEach(r => { if (r.storeId) map.set(r.storeId.toUpperCase(), `${r.storeName} (${r.storeId})`); });
+    effectiveSchedule.forEach(r => { if (r.storeId) map.set(r.storeId.toUpperCase(), `${r.storeName} (${r.storeId})`); });
     return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
-  }, [schedule]);
+  }, [effectiveSchedule]);
 
   const teamNames = useMemo(() => {
     const set = new Set<string>();
-    schedule.forEach(r => { if (r.teamLeader) set.add(r.teamLeader); });
+    effectiveSchedule.forEach(r => { if (r.teamLeader) set.add(r.teamLeader); });
     return [...set].sort();
-  }, [schedule]);
+  }, [effectiveSchedule]);
 
   // ─── apply filters ──────────────────────────────────────────────
 
   const filtered = useMemo(() => {
-    return schedule.filter(row => {
+    return effectiveSchedule.filter(row => {
       if (channelFilter && row.channel !== channelFilter) return false;
       if (userFilter && row.userEmail.toLowerCase() !== userFilter) return false;
       if (teamLeaderFilter && (row.teamLeader || '') !== teamLeaderFilter) return false;
@@ -230,7 +238,7 @@ export default function DashboardPage() {
       if (teamNameFilter && (row.teamLeader || '') !== teamNameFilter) return false;
       return true;
     });
-  }, [schedule, channelFilter, userFilter, teamLeaderFilter, storeFilter, teamNameFilter]);
+  }, [effectiveSchedule, channelFilter, userFilter, teamLeaderFilter, storeFilter, teamNameFilter]);
 
   // ─── Visit aggregation helpers ─────────────────────────────────
 
@@ -379,7 +387,7 @@ export default function DashboardPage() {
 
   const teamLeaderUploadLog = useMemo((): TLUploadEntry[] => {
     const map = new Map<string, { lastUploadedAt: string; uploadedBy: string; rowCount: number }>();
-    schedule.forEach(row => {
+    effectiveSchedule.forEach(row => {
       const tl = row.teamLeader || 'Unassigned';
       const existing = map.get(tl);
       if (!existing) {
@@ -406,7 +414,7 @@ export default function DashboardPage() {
         if (a.lastUploadedAt) return -1;
         return a.teamLeader.localeCompare(b.teamLeader);
       });
-  }, [schedule]);
+  }, [effectiveSchedule]);
 
   const hasAnyFilter = channelFilter || userFilter || teamLeaderFilter || storeFilter || teamNameFilter;
 
@@ -431,8 +439,9 @@ export default function DashboardPage() {
         <div className="bg-white rounded-xl shadow-sm border-l-4 border-[var(--color-primary)] px-6 py-4">
           <h1 className="text-xl font-bold text-gray-900">Dashboard</h1>
           <p className="text-sm text-gray-500 mt-0.5">
-            Summary of {schedule.length} schedule rows
-            {filtered.length !== schedule.length && ` (${filtered.length} matching filters)`}
+            Summary of {effectiveSchedule.length} schedule rows
+            {filtered.length !== effectiveSchedule.length && ` (${filtered.length} matching filters)`}
+            {isRep && ' (your data)'}
           </p>
         </div>
 
@@ -440,7 +449,7 @@ export default function DashboardPage() {
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-12 text-center text-gray-400">
             Loading schedule data...
           </div>
-        ) : schedule.length === 0 ? (
+        ) : effectiveSchedule.length === 0 ? (
           <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-6 py-12 text-center text-gray-400">
             No schedule data yet. Upload a call cycle file to get started.
           </div>
@@ -473,17 +482,19 @@ export default function DashboardPage() {
                   </select>
                 </div>
 
-                <div className="flex flex-col gap-1 min-w-[200px]">
-                  <label className="text-xs font-semibold text-gray-500 uppercase">User</label>
-                  <select
-                    value={userFilter}
-                    onChange={e => setUserFilter(e.target.value)}
-                    className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
-                  >
-                    <option value="">All Users</option>
-                    {users.map(([email, name]) => <option key={email} value={email}>{name}</option>)}
-                  </select>
-                </div>
+                {!isRep && (
+                  <div className="flex flex-col gap-1 min-w-[200px]">
+                    <label className="text-xs font-semibold text-gray-500 uppercase">User</label>
+                    <select
+                      value={userFilter}
+                      onChange={e => setUserFilter(e.target.value)}
+                      className="border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[var(--color-primary)]"
+                    >
+                      <option value="">All Users</option>
+                      {users.map(([email, name]) => <option key={email} value={email}>{name}</option>)}
+                    </select>
+                  </div>
+                )}
 
                 <div className="flex flex-col gap-1 min-w-[200px]">
                   <label className="text-xs font-semibold text-gray-500 uppercase">Store</label>

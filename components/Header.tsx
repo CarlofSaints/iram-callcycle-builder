@@ -1,7 +1,8 @@
 'use client';
 
-import { Session, hasMinRole } from '@/lib/useAuth';
+import { Session } from '@/lib/useAuth';
 import { useTenant } from '@/contexts/TenantContext';
+import { roleAtLeast, type TenantRole } from '@/lib/roles';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
@@ -14,8 +15,10 @@ export default function Header({ session, onLogout }: HeaderProps) {
   const pathname = usePathname();
   const tenant = useTenant();
 
-  const isAdmin = hasMinRole(session, 'admin');
-  const isManager = hasMinRole(session, 'manager');
+  const role: TenantRole = session.role || 'rep';
+  const isSuperAdmin = roleAtLeast(role, 'super_admin');
+  const isAdmin = roleAtLeast(role, 'admin');
+  const isTeamLeader = roleAtLeast(role, 'team_leader');
 
   function navClass(href: string) {
     const isActive = pathname === href || pathname.startsWith(href + '/');
@@ -47,30 +50,38 @@ export default function Header({ session, onLogout }: HeaderProps) {
 
         {/* Center: Nav links (desktop) */}
         <nav className="hidden md:flex items-center gap-1">
-          {/* Upload: admin + manager */}
-          {isManager && (
+          {/* Upload: super_admin + admin */}
+          {isAdmin && (
             <Link href="/upload" className={navClass('/upload')}>Upload</Link>
           )}
           {/* Schedule + Dashboard: all roles */}
           <Link href="/schedule" className={navClass('/schedule')}>Schedule</Link>
           <Link href="/dashboard" className={navClass('/dashboard')}>Dashboard</Link>
-          {/* Admin-only pages */}
-          {isAdmin && (
-            <>
-              <Link href="/admin/users" className={navClass('/admin/users')}>Users</Link>
-              <Link href="/admin/control-files" className={navClass('/admin/control-files')}>Control Files</Link>
-              <Link href="/admin/perigee" className={navClass('/admin/perigee')}>Perigee API</Link>
-            </>
+          {/* Users: super_admin only */}
+          {isSuperAdmin && (
+            <Link href="/admin/users" className={navClass('/admin/users')}>Users</Link>
           )}
-          {/* Activity: admin + manager */}
-          {isManager && (
+          {/* Control Files: super_admin + admin */}
+          {isAdmin && (
+            <Link href="/admin/control-files" className={navClass('/admin/control-files')}>Control Files</Link>
+          )}
+          {/* Perigee API: super_admin only */}
+          {isSuperAdmin && (
+            <Link href="/admin/perigee" className={navClass('/admin/perigee')}>Perigee API</Link>
+          )}
+          {/* Activity: super_admin, admin */}
+          {isAdmin && (
             <Link href="/activity" className={navClass('/activity')}>Activity</Link>
+          )}
+          {/* Roles: super_admin only */}
+          {isSuperAdmin && (
+            <Link href="/admin/roles" className={navClass('/admin/roles')}>Roles</Link>
           )}
         </nav>
 
         {/* Mobile nav — visible below md breakpoint */}
         <nav className="flex md:hidden items-center gap-1 overflow-x-auto">
-          {isManager && <Link href="/upload" className={navClass('/upload')}>Upload</Link>}
+          {isAdmin && <Link href="/upload" className={navClass('/upload')}>Upload</Link>}
           <Link href="/schedule" className={navClass('/schedule')}>Schedule</Link>
           <Link href="/dashboard" className={navClass('/dashboard')}>Dashboard</Link>
         </nav>

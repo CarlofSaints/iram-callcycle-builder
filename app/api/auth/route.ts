@@ -5,6 +5,7 @@ import { loadSuperAdmins } from '@/lib/superAdminData';
 import { addActivity } from '@/lib/activityLogData';
 import { getTenantSlug } from '@/lib/getTenantSlug';
 import { randomUUID } from 'crypto';
+import { migrateRole } from '@/lib/roles';
 
 export async function POST(req: NextRequest) {
   const slug = await getTenantSlug();
@@ -36,13 +37,14 @@ export async function POST(req: NextRequest) {
       userEmail: user.email,
     });
 
+    const effectiveRole = migrateRole(user.role, user.isAdmin);
     return NextResponse.json({
       id: user.id,
       name: user.name,
       surname: user.surname,
       email: user.email,
-      isAdmin: user.isAdmin,
-      role: user.role || (user.isAdmin ? 'admin' : 'user'),
+      isAdmin: effectiveRole === 'super_admin',
+      role: effectiveRole,
       forcePasswordChange: user.forcePasswordChange,
     });
   }
@@ -74,7 +76,7 @@ export async function POST(req: NextRequest) {
     surname: '',
     email: sa.email,
     isAdmin: true,
-    role: 'admin' as const,
+    role: 'super_admin' as const,
     isSuperAdmin: true,
     forcePasswordChange: sa.forcePasswordChange === true,
   });
