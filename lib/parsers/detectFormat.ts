@@ -51,6 +51,19 @@ export function detectFormat(workbook: XLSX.WorkBook): FileFormat {
   // Check for email-as-sheet-name pattern
   const emailSheets = sheetNames.filter(s => s.includes('@'));
   if (emailSheets.length > 0) {
+    // Sub-check: do email sheets have WEEK N markers in col A?
+    // If so, this is a user-4wk format (V7 Master File with preamble rows),
+    // not the simpler email-sheet format that uses Week:/Email: markers.
+    const sampleSheet = workbook.Sheets[emailSheets[0]];
+    if (sampleSheet) {
+      const sampleData = XLSX.utils.sheet_to_json<(string | number | null)[]>(sampleSheet, { header: 1 });
+      let weekMarkerCount = 0;
+      for (let r = 0; r < Math.min(60, sampleData.length); r++) {
+        const colA = String((sampleData[r] || [])[0] || '').trim();
+        if (/^week\s*[:\s]*\d+$/i.test(colA)) weekMarkerCount++;
+      }
+      if (weekMarkerCount >= 2) return 'user-4wk';
+    }
     return 'email-sheet';
   }
 

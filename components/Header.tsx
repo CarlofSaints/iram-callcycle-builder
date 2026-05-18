@@ -59,6 +59,7 @@ export default function Header({ session, onLogout }: HeaderProps) {
             <>
               <Link href="/admin/users" className={navClass('/admin/users')}>Users</Link>
               <Link href="/admin/control-files" className={navClass('/admin/control-files')}>Control Files</Link>
+              <Link href="/admin/perigee" className={navClass('/admin/perigee')}>Perigee API</Link>
             </>
           )}
           {/* Activity: admin + manager */}
