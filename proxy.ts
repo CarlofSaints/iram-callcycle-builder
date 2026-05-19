@@ -38,65 +38,60 @@ export function proxy(req: NextRequest) {
     return NextResponse.next();
   }
 
+  // Debug endpoint is platform-level (temporary)
+  if (pathname.startsWith('/api/debug')) {
+    return NextResponse.next();
+  }
+
   const hostname = req.headers.get('host') || '';
   const host = hostname.toLowerCase().replace(/:\d+$/, '');
 
   const tenants = loadTenantsFromEnv();
-
-  // Local dev: check DEV_TENANT_SLUG
   const devSlug = process.env.DEV_TENANT_SLUG;
-  if (devSlug && (host === 'localhost' || host === '127.0.0.1' || host.startsWith('localhost:'))) {
-    const tenant = tenants.find(t => t.slug === devSlug && t.active);
-    if (tenant) {
+
+  // 1. Try to match hostname to a configured tenant
+  const tenant = tenants.find(t => t.active && t.domains.some(d => d.toLowerCase() === host));
+
+  if (tenant) {
+    const headers = new Headers(req.headers);
+    headers.set('x-tenant-slug', tenant.slug);
+    headers.set('x-tenant-config', JSON.stringify(tenant));
+    return NextResponse.next({ request: { headers } });
+  }
+
+  // 2. DEV_TENANT_SLUG fallback — works on any hostname (localhost, vercel.app, custom domain)
+  //    This is the primary mechanism when PLATFORM_TENANTS_JSON isn't configured.
+  if (devSlug) {
+    // Try to find matching tenant config for branding
+    const fallbackTenant = tenants.find(t => t.slug === devSlug && t.active);
+    const headers = new Headers(req.headers);
+    headers.set('x-tenant-slug', devSlug);
+    if (fallbackTenant) {
+      headers.set('x-tenant-config', JSON.stringify(fallbackTenant));
+    }
+    return NextResponse.next({ request: { headers } });
+  }
+
+  // 3. Platform domain → redirect to super-admin portal
+  const platformDomain = process.env.PLATFORM_DOMAIN?.toLowerCase();
+  if (platformDomain && host === platformDomain) {
+    return NextResponse.redirect(new URL('/super-admin/login', req.url));
+  }
+
+  // 4. Vercel preview URLs — route to first active tenant
+  const isVercelDomain = host.endsWith('.vercel.app') || host.endsWith('.vercel.sh');
+  if (isVercelDomain && tenants.length > 0) {
+    const fallback = tenants.find(t => t.active);
+    if (fallback) {
       const headers = new Headers(req.headers);
-      headers.set('x-tenant-slug', tenant.slug);
-      headers.set('x-tenant-config', JSON.stringify(tenant));
+      headers.set('x-tenant-slug', fallback.slug);
+      headers.set('x-tenant-config', JSON.stringify(fallback));
       return NextResponse.next({ request: { headers } });
     }
   }
 
-  // Production: resolve tenant from hostname
-  const tenant = tenants.find(t => t.active && t.domains.some(d => d.toLowerCase() === host));
-
-  if (!tenant) {
-    // Platform/super-admin root domain (no tenant subdomain) — redirect to super-admin
-    const platformDomain = process.env.PLATFORM_DOMAIN?.toLowerCase();
-    if (platformDomain && host === platformDomain) {
-      return NextResponse.redirect(new URL('/super-admin/login', req.url));
-    }
-
-    // Legacy single-tenant URL — permanently redirect to the iRam canonical domain
-    if (host === 'iram-callcycle-builder.vercel.app') {
-      const destPath = req.nextUrl.pathname + req.nextUrl.search;
-      return NextResponse.redirect(
-        `https://iram.callcycle.fieldgoose.outerjoin.co.za${destPath}`,
-        308,
-      );
-    }
-
-    // Other Vercel preview URLs (per-deployment hashes, etc.) — route to first
-    // active tenant so developers can still test previews. End users don't
-    // encounter these URLs.
-    const isVercelDomain = host.endsWith('.vercel.app') || host.endsWith('.vercel.sh');
-    if (isVercelDomain && tenants.length > 0) {
-      const fallback = tenants.find(t => t.active);
-      if (fallback) {
-        const headers = new Headers(req.headers);
-        headers.set('x-tenant-slug', fallback.slug);
-        headers.set('x-tenant-config', JSON.stringify(fallback));
-        return NextResponse.next({ request: { headers } });
-      }
-    }
-
-    // Unknown tenant — return 404
-    return new NextResponse('Tenant not found', { status: 404 });
-  }
-
-  const headers = new Headers(req.headers);
-  headers.set('x-tenant-slug', tenant.slug);
-  headers.set('x-tenant-config', JSON.stringify(tenant));
-
-  return NextResponse.next({ request: { headers } });
+  // No tenant resolution possible — return 404
+  return new NextResponse('Tenant not found. Set DEV_TENANT_SLUG env var or configure PLATFORM_TENANTS_JSON.', { status: 404 });
 }
 
 export const config = {
