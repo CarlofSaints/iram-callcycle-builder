@@ -16,10 +16,13 @@ export async function POST(req: NextRequest) {
 
   // 1. Check tenant-level users first
   const users = await loadUsers(slug);
+  console.log(`[auth] tenant="${slug}" email="${email}" usersLoaded=${users.length} emails=[${users.map(u => u.email).join(', ')}]`);
   const user = users.find(u => u.email.toLowerCase() === email.toLowerCase());
 
   if (user) {
+    console.log(`[auth] user found: id=${user.id} name="${user.name} ${user.surname}" hasPassword=${!!user.password} passwordLength=${user.password?.length}`);
     const valid = await bcrypt.compare(password, user.password);
+    console.log(`[auth] bcrypt.compare result: ${valid}`);
     if (!valid) {
       return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
     }
@@ -49,11 +52,15 @@ export async function POST(req: NextRequest) {
     });
   }
 
+  // User not found in tenant users
+  console.log(`[auth] user NOT found for email="${email}" in tenant="${slug}" (${users.length} users loaded)`);
+
   // 2. Fall through: check platform super-admin credentials
   //    Super-admins are implicit admins on every tenant
   const superAdmins = await loadSuperAdmins();
   const sa = superAdmins.find(a => a.email.toLowerCase() === email.toLowerCase());
   if (!sa) {
+    console.log(`[auth] also not found in super-admins. Returning 401.`);
     return NextResponse.json({ error: 'Invalid credentials' }, { status: 401 });
   }
 

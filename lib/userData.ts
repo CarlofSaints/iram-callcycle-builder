@@ -48,9 +48,11 @@ export async function loadUsers(tenantSlug: string): Promise<User[]> {
   // Production: read from Blob
   try {
     const result = await get(blobKey, { access: 'private', useCache: false });
+    console.log(`[userData] Blob get for "${blobKey}": result=${result ? `statusCode=${result.statusCode}` : 'null'}`);
     if (result && result.statusCode === 200) {
       const text = await new Response(result.stream).text();
       const users = JSON.parse(text) as User[];
+      console.log(`[userData] Parsed ${users.length} users from blob`);
       // Migrate role to new 4-tier system
       return users.map(u => ({
         ...u,
@@ -62,6 +64,7 @@ export async function loadUsers(tenantSlug: string): Promise<User[]> {
     console.error(`[userData] Blob read failed for ${blobKey}:`, err instanceof Error ? err.message : err);
   }
 
+  console.warn(`[userData] Returning empty user array for "${blobKey}" — blob not found or read failed`);
   return [];
 }
 
