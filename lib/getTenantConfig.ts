@@ -17,6 +17,7 @@ export async function getTenantEmailConfig(): Promise<EmailTenantConfig> {
         name: t.name,
         subtitle: t.subtitle || 'Call Cycle Builder',
         primaryColor: t.primaryColor,
+        appUrl: t.domains?.[0] ? `https://${t.domains[0]}` : undefined,
       };
     } catch { /* fallback */ }
   }
