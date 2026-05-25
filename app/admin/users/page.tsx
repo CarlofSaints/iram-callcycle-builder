@@ -57,6 +57,8 @@ export default function AdminUsersPage() {
   const [sendWelcome, setSendWelcome] = useState(true);
   const [addLoading, setAddLoading] = useState(false);
 
+  const [resendingId, setResendingId] = useState<string | null>(null);
+
   // Edit modal
   const [editUser, setEditUser] = useState<User | null>(null);
   const [editName, setEditName] = useState('');
@@ -144,6 +146,17 @@ export default function AdminUsersPage() {
     } finally {
       setEditLoading(false);
     }
+  }
+
+  async function handleResend(user: User) {
+    if (!confirm(`Resend credentials to ${user.name} ${user.surname}? This will generate a new temporary password.`)) return;
+    setResendingId(user.id);
+    try {
+      const res = await fetch(`/api/users/${user.id}/resend`, { method: 'POST' });
+      if (res.ok) notify(`Credentials resent to ${user.email}`);
+      else notify('Failed to resend credentials', 'error');
+    } catch { notify('Failed to resend credentials', 'error'); }
+    finally { setResendingId(null); }
   }
 
   async function handleDelete(user: User) {
@@ -255,6 +268,10 @@ export default function AdminUsersPage() {
                     </td>
                     <td className="px-6 py-3">
                       <div className="flex gap-2 justify-end">
+                        <button onClick={() => handleResend(u)} disabled={resendingId === u.id}
+                          className="text-xs text-emerald-600 hover:text-emerald-800 disabled:opacity-50 font-medium">
+                          {resendingId === u.id ? 'Sending...' : 'Resend'}
+                        </button>
                         <button onClick={() => openEdit(u)}
                           className="text-xs text-blue-600 hover:text-blue-800 font-medium">Edit</button>
                         <button onClick={() => handleDelete(u)}
