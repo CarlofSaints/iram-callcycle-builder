@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/useAuth';
 import Header from '@/components/Header';
 import { useEffect, useState, useMemo, useCallback } from 'react';
 import { roleAtLeast } from '@/lib/roles';
+import type { AdherenceData, AdherenceMetrics } from '@/lib/adherenceCalc';
 
 interface ScheduleRow {
   userEmail: string;
@@ -26,6 +27,24 @@ interface VisitAggregation {
   byStoreCode: Record<string, number>;
   byRepEmail: Record<string, number>;
   lastVisitByStoreCode: Record<string, string>;
+}
+
+function AdherenceBadge({ pct, positive }: { pct: number; positive: boolean }) {
+  let bg: string, text: string;
+  if (positive) {
+    if (pct >= 80) { bg = 'bg-green-100'; text = 'text-green-700'; }
+    else if (pct >= 40) { bg = 'bg-amber-100'; text = 'text-amber-700'; }
+    else { bg = 'bg-red-100'; text = 'text-red-700'; }
+  } else {
+    if (pct < 10) { bg = 'bg-green-100'; text = 'text-green-700'; }
+    else if (pct < 50) { bg = 'bg-amber-100'; text = 'text-amber-700'; }
+    else { bg = 'bg-red-100'; text = 'text-red-700'; }
+  }
+  return (
+    <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-semibold ${bg} ${text}`}>
+      {pct}%
+    </span>
+  );
 }
 
 // ─── helpers ────────────────────────────────────────────────────────
@@ -183,6 +202,7 @@ export default function DashboardPage() {
 
   // Visit data
   const [visitData, setVisitData] = useState<VisitAggregation | null>(null);
+  const [adherence, setAdherence] = useState<AdherenceData | null>(null);
 
   // Filters
   const [channelFilter, setChannelFilter] = useState('');
@@ -221,6 +241,10 @@ export default function DashboardPage() {
       .then(r => r.ok ? r.json() : null)
       .then(d => setVisitData(d))
       .catch(() => setVisitData(null));
+    fetch(`/api/visits/adherence?${params.toString()}`, { cache: 'no-store' })
+      .then(r => r.ok ? r.json() : null)
+      .then(d => { if (d && d.totals) setAdherence(d); })
+      .catch(() => setAdherence(null));
   }, [session, dateFrom, dateTo]);
 
   useEffect(() => { fetchVisits(); }, [fetchVisits]);
@@ -474,9 +498,14 @@ export default function DashboardPage() {
       case 'target': return r.target;
       case 'actual': return r.actual;
       case 'pct': return r.pct;
+      case 'accurateHitRate': return adherence?.byTeamLeader[r.teamLeader]?.accurateHitRate ?? 0;
+      case 'storesVisitedPct': return adherence?.byTeamLeader[r.teamLeader]?.storesVisitedPct ?? 0;
+      case 'unscheduledPct': return adherence?.byTeamLeader[r.teamLeader]?.unscheduledPct ?? 0;
+      case 'missedPct': return adherence?.byTeamLeader[r.teamLeader]?.missedPct ?? 0;
       default: return '';
     }
-  }), [teamLeaderSummary, tlSort]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [teamLeaderSummary, tlSort, adherence]);
 
   const sortedCh = useMemo(() => sortRows(channelSummary, chSort, (r, c) => {
     switch (c) {
@@ -487,9 +516,14 @@ export default function DashboardPage() {
       case 'target': return r.target;
       case 'actual': return r.actual;
       case 'pct': return r.pct;
+      case 'accurateHitRate': return adherence?.byChannel[r.channel]?.accurateHitRate ?? 0;
+      case 'storesVisitedPct': return adherence?.byChannel[r.channel]?.storesVisitedPct ?? 0;
+      case 'unscheduledPct': return adherence?.byChannel[r.channel]?.unscheduledPct ?? 0;
+      case 'missedPct': return adherence?.byChannel[r.channel]?.missedPct ?? 0;
       default: return '';
     }
-  }), [channelSummary, chSort]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [channelSummary, chSort, adherence]);
 
   const sortedUsr = useMemo(() => sortRows(userSummary, usrSort, (r, c) => {
     switch (c) {
@@ -501,9 +535,14 @@ export default function DashboardPage() {
       case 'target': return r.target;
       case 'actual': return r.actual;
       case 'pct': return r.pct;
+      case 'accurateHitRate': return adherence?.byUser[r.email]?.accurateHitRate ?? 0;
+      case 'storesVisitedPct': return adherence?.byUser[r.email]?.storesVisitedPct ?? 0;
+      case 'unscheduledPct': return adherence?.byUser[r.email]?.unscheduledPct ?? 0;
+      case 'missedPct': return adherence?.byUser[r.email]?.missedPct ?? 0;
       default: return '';
     }
-  }), [userSummary, usrSort]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }), [userSummary, usrSort, adherence]);
 
   const sortedLog = useMemo(() => sortRows(teamLeaderUploadLog, logSort, (r, c) => {
     switch (c) {
@@ -682,6 +721,42 @@ export default function DashboardPage() {
               </div>
             </div>
 
+            {/* ─── Adherence KPI Cards ────────────────────────────────── */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Accurate Hit Rate</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-gray-900">{adherence?.totals.accurateHitRate ?? 0}%</p>
+                  <AdherenceBadge pct={adherence?.totals.accurateHitRate ?? 0} positive />
+                </div>
+                <p className="text-[11px] text-gray-400">Visits on exact assigned date</p>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Stores Visited</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-gray-900">{adherence?.totals.storesVisitedPct ?? 0}%</p>
+                  <AdherenceBadge pct={adherence?.totals.storesVisitedPct ?? 0} positive />
+                </div>
+                <p className="text-[11px] text-gray-400">{adherence ? `${adherence.totals.visitedStores}/${adherence.totals.scheduledStores} stores` : '\u2014'}</p>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Unscheduled</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-gray-900">{adherence?.totals.unscheduledPct ?? 0}%</p>
+                  <AdherenceBadge pct={adherence?.totals.unscheduledPct ?? 0} positive={false} />
+                </div>
+                <p className="text-[11px] text-gray-400">{adherence ? `${adherence.totals.unscheduledVisits}/${adherence.totals.totalVisits} visits` : '\u2014'}</p>
+              </div>
+              <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-col gap-1">
+                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Missed</p>
+                <div className="flex items-center gap-2">
+                  <p className="text-2xl font-bold text-gray-900">{adherence?.totals.missedPct ?? 0}%</p>
+                  <AdherenceBadge pct={adherence?.totals.missedPct ?? 0} positive={false} />
+                </div>
+                <p className="text-[11px] text-gray-400">{adherence ? `${adherence.totals.missedStores}/${adherence.totals.scheduledStores} stores` : '\u2014'}</p>
+              </div>
+            </div>
+
             {/* ─── Team Leader Summary ──────────────────────────────── */}
             <section className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
               <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
@@ -698,12 +773,18 @@ export default function DashboardPage() {
                       <SortTh label="Target" col="target" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
                       <SortTh label="Actual" col="actual" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
                       <SortTh label="Completion" col="pct" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Hit Rate" col="accurateHitRate" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Visited" col="storesVisitedPct" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Unsched." col="unscheduledPct" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
+                      <SortTh label="Missed" col="missedPct" sort={tlSort} onSort={c => setTlSort(toggleSort(tlSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
                     {sortedTL.length === 0 ? (
-                      <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
-                    ) : sortedTL.map(row => (
+                      <tr><td colSpan={11} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
+                    ) : sortedTL.map(row => {
+                      const tlAdh = adherence?.byTeamLeader[row.teamLeader] as AdherenceMetrics | undefined;
+                      return (
                       <tr key={row.teamLeader} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5 font-medium text-gray-900">{row.teamLeader}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.subordinates}</td>
@@ -712,8 +793,13 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{row.target}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.actual}</td>
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={row.pct} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={tlAdh?.accurateHitRate ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={tlAdh?.storesVisitedPct ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={tlAdh?.unscheduledPct ?? 0} positive={false} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={tlAdh?.missedPct ?? 0} positive={false} /></td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {sortedTL.length > 1 && (
                       <tr className="bg-gray-50 font-semibold border-t border-gray-200">
                         <td className="px-4 py-2.5 text-gray-700">Total</td>
@@ -723,6 +809,10 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right text-gray-900">{kpis.target}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.actual}</td>
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={kpis.pct} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.accurateHitRate ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.storesVisitedPct ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.unscheduledPct ?? 0} positive={false} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.missedPct ?? 0} positive={false} /></td>
                       </tr>
                     )}
                   </tbody>
@@ -746,12 +836,18 @@ export default function DashboardPage() {
                       <SortTh label="Target" col="target" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
                       <SortTh label="Actual" col="actual" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
                       <SortTh label="Completion" col="pct" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Hit Rate" col="accurateHitRate" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Visited" col="storesVisitedPct" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Unsched." col="unscheduledPct" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
+                      <SortTh label="Missed" col="missedPct" sort={chSort} onSort={c => setChSort(toggleSort(chSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
                     {sortedCh.length === 0 ? (
-                      <tr><td colSpan={7} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
-                    ) : sortedCh.map(row => (
+                      <tr><td colSpan={11} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
+                    ) : sortedCh.map(row => {
+                      const chAdh = adherence?.byChannel[row.channel] as AdherenceMetrics | undefined;
+                      return (
                       <tr key={row.channel} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5 font-medium text-gray-900">{row.channel}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.stores}</td>
@@ -760,8 +856,13 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{row.target}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.actual}</td>
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={row.pct} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={chAdh?.accurateHitRate ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={chAdh?.storesVisitedPct ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={chAdh?.unscheduledPct ?? 0} positive={false} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={chAdh?.missedPct ?? 0} positive={false} /></td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {sortedCh.length > 1 && (
                       <tr className="bg-gray-50 font-semibold border-t border-gray-200">
                         <td className="px-4 py-2.5 text-gray-700">Total</td>
@@ -771,6 +872,10 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right text-gray-900">{kpis.target}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.actual}</td>
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={kpis.pct} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.accurateHitRate ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.storesVisitedPct ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.unscheduledPct ?? 0} positive={false} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.missedPct ?? 0} positive={false} /></td>
                       </tr>
                     )}
                   </tbody>
@@ -795,12 +900,18 @@ export default function DashboardPage() {
                       <SortTh label="Target" col="target" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
                       <SortTh label="Actual" col="actual" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
                       <SortTh label="Completion" col="pct" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Hit Rate" col="accurateHitRate" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Visited" col="storesVisitedPct" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Unsched." col="unscheduledPct" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
+                      <SortTh label="Missed" col="missedPct" sort={usrSort} onSort={c => setUsrSort(toggleSort(usrSort, c))} align="right" />
                     </tr>
                   </thead>
                   <tbody>
                     {sortedUsr.length === 0 ? (
-                      <tr><td colSpan={8} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
-                    ) : sortedUsr.map(row => (
+                      <tr><td colSpan={12} className="px-4 py-6 text-center text-gray-400">No data</td></tr>
+                    ) : sortedUsr.map(row => {
+                      const usrAdh = adherence?.byUser[row.email] as (AdherenceMetrics & { email: string; name: string; teamLeader: string }) | undefined;
+                      return (
                       <tr key={row.email} className="border-b border-gray-50 hover:bg-gray-50 transition-colors">
                         <td className="px-4 py-2.5">
                           <p className="font-medium text-gray-900 text-sm">{row.name}</p>
@@ -813,8 +924,13 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right font-semibold text-gray-900">{row.target}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{row.actual}</td>
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={row.pct} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={usrAdh?.accurateHitRate ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={usrAdh?.storesVisitedPct ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={usrAdh?.unscheduledPct ?? 0} positive={false} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={usrAdh?.missedPct ?? 0} positive={false} /></td>
                       </tr>
-                    ))}
+                      );
+                    })}
                     {sortedUsr.length > 1 && (
                       <tr className="bg-gray-50 font-semibold border-t border-gray-200">
                         <td className="px-4 py-2.5 text-gray-700">Total ({sortedUsr.length} users)</td>
@@ -825,6 +941,10 @@ export default function DashboardPage() {
                         <td className="px-4 py-2.5 text-right text-gray-900">{kpis.target}</td>
                         <td className="px-4 py-2.5 text-right text-gray-700">{kpis.actual}</td>
                         <td className="px-4 py-2.5 text-right"><CompletionBadge pct={kpis.pct} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.accurateHitRate ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.storesVisitedPct ?? 0} positive /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.unscheduledPct ?? 0} positive={false} /></td>
+                        <td className="px-4 py-2.5 text-right"><AdherenceBadge pct={adherence?.totals.missedPct ?? 0} positive={false} /></td>
                       </tr>
                     )}
                   </tbody>
