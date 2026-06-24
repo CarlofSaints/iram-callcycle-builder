@@ -55,12 +55,26 @@ function looksLikeStoreCode(s: string): boolean {
   return /^[A-Za-z]{1,5}-?[A-Za-z0-9-]*\d[A-Za-z0-9-]*$/.test(t);
 }
 
+/**
+ * Remove a trailing duplicated store code from a store name.
+ * E.g. name "MAKRO LIQUOR VAAL - M18L", code "M18L" → "MAKRO LIQUOR VAAL".
+ * Handles a trailing " - CODE", "-CODE", or " CODE" (case-insensitive).
+ * Only strips when the code actually trails the name, so legitimate names that
+ * merely contain the code earlier on are left untouched.
+ */
+function stripTrailingCode(name: string, code: string): string {
+  if (!code) return name;
+  const esc = code.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return name.replace(new RegExp(`\\s*[-\\s]\\s*${esc}\\s*$`, 'i'), '').trim();
+}
+
 /** Extract store code from various formats:
  *  - "STORE NAME - CODE"          (e.g. "GAME KLERKSDORP - G016")
  *  - "STORE NAME [CODE] - CODE"   (e.g. "PICK N PAY - CORPORATE MATLOSANA MALL [GC86] - GC86")
  *  - "STORE NAME [CODE]"          (e.g. "PICK N PAY - HYPER FAERIE GLEN [HC10]")
  *  - "STORE NAME CODE"            (e.g. "PICK N PAY - CORPORATE MATLOSANA MALL GC86")
  *  - "NAME-CODE"                  (e.g. "BWH HELDERBERG-B43")
+ *  - "STORE NAME - CODE - CODE"   (e.g. "MAKRO LIQUOR VAAL - M18L - M18L") → name de-duplicated
  */
 export function extractStoreCode(storeStr: string): { storeName: string; storeCode: string } {
   const trimmed = storeStr.trim()
@@ -76,7 +90,7 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
       // Store name is everything before the bracket (may include " - QUALIFIER")
       const namePart = bracketMatch[1].trim();
       // Remove trailing " - CODE" after the bracket if present
-      return { storeName: namePart, storeCode: code };
+      return { storeName: stripTrailingCode(namePart, code), storeCode: code };
     }
   }
 
@@ -86,7 +100,7 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
     const rightSide = trimmed.substring(dashIdx + 3).trim();
     if (looksLikeStoreCode(rightSide)) {
       return {
-        storeName: trimmed.substring(0, dashIdx).trim(),
+        storeName: stripTrailingCode(trimmed.substring(0, dashIdx).trim(), rightSide),
         storeCode: rightSide,
       };
     }
@@ -101,7 +115,7 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
     const rightOfHyphen = trimmed.substring(lastHyphen + 1).trim();
     if (rightOfHyphen && !rightOfHyphen.includes(' ') && looksLikeStoreCode(rightOfHyphen)) {
       return {
-        storeName: trimmed.substring(0, lastHyphen).trim(),
+        storeName: stripTrailingCode(trimmed.substring(0, lastHyphen).trim(), rightOfHyphen),
         storeCode: rightOfHyphen,
       };
     }
@@ -113,7 +127,7 @@ export function extractStoreCode(storeStr: string): { storeName: string; storeCo
     const lastWord = trimmed.substring(lastSpaceIdx + 1).trim();
     if (looksLikeStoreCode(lastWord)) {
       return {
-        storeName: trimmed.substring(0, lastSpaceIdx).trim(),
+        storeName: stripTrailingCode(trimmed.substring(0, lastSpaceIdx).trim(), lastWord),
         storeCode: lastWord,
       };
     }
