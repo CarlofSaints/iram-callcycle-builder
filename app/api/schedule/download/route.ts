@@ -3,6 +3,7 @@ import ExcelJS from 'exceljs';
 import { loadSchedule } from '@/lib/scheduleData';
 import { loadReferences } from '@/lib/referenceData';
 import { loadStoreControl } from '@/lib/storeControlData';
+import { buildStoreChannelResolver } from '@/lib/storeChannelResolver';
 import { loadTeamControl } from '@/lib/teamControlData';
 import { addActivity } from '@/lib/activityLogData';
 import { getTenantSlug } from '@/lib/getTenantSlug';
@@ -66,13 +67,9 @@ export async function GET(req: Request) {
     }
   }
 
-  // Build store control lookup (storeCode → channel)
-  const storeControlLookup = new Map<string, string>();
-  if (storeControl) {
-    for (const s of storeControl.stores) {
-      storeControlLookup.set(s.storeCode.toUpperCase(), s.channel);
-    }
-  }
+  // Build store control channel resolver. Site code is the primary key; for
+  // codes shared across channels (BEX vs Dis-Chem) it disambiguates by store name.
+  const channelResolver = buildStoreChannelResolver(storeControl?.stores ?? []);
 
   // Build reverse lookup: email local part → full email + memberId
   const localPartLookup = new Map<string, { email: string; memberId: string; teamName: string; teamLeader: string }>();
@@ -327,8 +324,11 @@ export async function GET(req: Request) {
       (!row.userEmail && row.firstName ? localPartLookup.get(row.firstName.toLowerCase())?.memberId : '') ||
       refUser?.userId || '';
 
-    // Use store control channel as fallback
-    const channel = row.channel || storeControlLookup.get(row.storeId.toUpperCase()) || '';
+    // Channel from the control file (canonical, disambiguated by name for
+    // duplicate codes); fall back to the stored channel only if the code is
+    // unknown to the control file. Resolving here also corrects any channel
+    // that was stored wrong before duplicate-code handling existed.
+    const channel = channelResolver.resolve(row.storeId, row.storeName) || row.channel || '';
 
     const r = scheduleSheet.addRow({
       userId,

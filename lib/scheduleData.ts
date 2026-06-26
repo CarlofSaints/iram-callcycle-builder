@@ -3,6 +3,7 @@ import fsSync from 'fs';
 import path from 'path';
 import { put, get } from '@vercel/blob';
 import { ScheduleRow, ParsedEntry, UploadResult } from './types';
+import { buildStoreChannelResolver } from './storeChannelResolver';
 
 /**
  * Canonical schedule persistence: Vercel Blob (private store) with tenant prefix.
@@ -49,7 +50,7 @@ export async function mergeIntoSchedule(
   tenantSlug: string,
   entries: ParsedEntry[],
   uploadedBy: string,
-  referenceStores: { storeCode: string; channel: string }[],
+  referenceStores: { storeCode: string; storeName: string; channel: string }[],
 ): Promise<UploadResult> {
   const schedule = await loadSchedule(tenantSlug);
   const now = new Date().toISOString();
@@ -57,10 +58,9 @@ export async function mergeIntoSchedule(
   let rowsAdded = 0;
   let rowsUpdated = 0;
 
-  const storeLookup = new Map<string, string>();
-  for (const s of referenceStores) {
-    storeLookup.set(s.storeCode.toUpperCase(), s.channel);
-  }
+  // Site code is the primary key; duplicate codes (BEX vs Dis-Chem) are
+  // disambiguated by store name so the right channel is recorded.
+  const channelResolver = buildStoreChannelResolver(referenceStores);
 
   for (const entry of entries) {
     const existingIdx = schedule.findIndex(r =>
@@ -69,11 +69,13 @@ export async function mergeIntoSchedule(
       r.cycle === entry.cycle
     );
 
-    const channel = storeLookup.get(entry.storeId.toUpperCase()) || '';
+    const channel = channelResolver.resolve(entry.storeId, entry.storeName);
     if (!entry.storeId) {
       warnings.push(`No site ID found for "${entry.storeName}" — added with blank site ID`);
     } else if (!channel) {
       warnings.push(`Store ${entry.storeId} (${entry.storeName}) not found in reference data`);
+    } else if (channelResolver.isAmbiguous(entry.storeId)) {
+      warnings.push(`Site code ${entry.storeId} exists in more than one channel — matched "${entry.storeName}" to channel "${channel}" by name. Please verify.`);
     }
 
     if (existingIdx >= 0) {
@@ -115,10 +117,10 @@ export async function mergeIntoSchedule(
     }
   }
 
-  if (storeLookup.size > 0) {
+  if (referenceStores.length > 0) {
     for (const row of schedule) {
       if (!row.channel && row.storeId) {
-        const ch = storeLookup.get(row.storeId.toUpperCase());
+        const ch = channelResolver.resolve(row.storeId, row.storeName);
         if (ch) row.channel = ch;
       }
     }

@@ -81,7 +81,7 @@ export async function POST(req: NextRequest) {
       slug,
       entries,
       userEmail,
-      references.stores.map(s => ({ storeCode: s.storeCode, channel: s.channel })),
+      references.stores.map(s => ({ storeCode: s.storeCode, storeName: s.storeName, channel: s.channel })),
     );
 
     // Log activity
