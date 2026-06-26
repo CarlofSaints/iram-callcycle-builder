@@ -21,9 +21,28 @@ export interface StoreLike {
   active?: boolean;
 }
 
+export type ChannelMatchType =
+  | 'unique'    // code maps to exactly one channel — no ambiguity
+  | 'exact'     // duplicate code, resolved by exact store-name match
+  | 'keyword'   // duplicate code, resolved by channel keyword in the name
+  | 'token'     // duplicate code, resolved by a single best token overlap
+  | 'ambiguous' // duplicate code, name could NOT pick a channel (tie / no signal)
+  | 'unknown';  // code not present in the control file
+
+export interface ChannelResolution {
+  channel: string;
+  matchType: ChannelMatchType;
+  /** True when we trust the channel. False for 'ambiguous'/'unknown'. */
+  confident: boolean;
+  /** Distinct channels this code appears under (for reporting ambiguity). */
+  candidateChannels: string[];
+}
+
 export interface StoreChannelResolver {
   /** Channel for a store, disambiguating duplicate codes by store name. '' if the code is unknown. */
   resolve(storeCode: string, storeName: string): string;
+  /** Full resolution with match type + confidence, used for upload validation. */
+  resolveDetailed(storeCode: string, storeName: string): ChannelResolution;
   /** True when this code exists under more than one channel in the control file. */
   isAmbiguous(storeCode: string): boolean;
 }
@@ -65,19 +84,30 @@ export function buildStoreChannelResolver(stores: StoreLike[]): StoreChannelReso
     return channels.size > 1;
   }
 
-  function resolve(storeCode: string, storeName: string): string {
+  function distinctChannels(list: StoreLike[]): string[] {
+    return [...new Set(list.map(s => (s.channel || '').trim()).filter(Boolean))];
+  }
+
+  function resolveDetailed(storeCode: string, storeName: string): ChannelResolution {
     const code = (storeCode || '').trim().toUpperCase();
     const list = byCode.get(code);
-    if (!list || list.length === 0) return '';
-    if (list.length === 1) return list[0].channel;
+    if (!list || list.length === 0) {
+      return { channel: '', matchType: 'unknown', confident: false, candidateChannels: [] };
+    }
 
-    // Duplicate code — disambiguate by the schedule store name.
+    const channels = distinctChannels(list);
+    // Single entry, or many entries that all share one channel → unambiguous.
+    if (list.length === 1 || channels.length <= 1) {
+      return { channel: list[0].channel, matchType: 'unique', confident: true, candidateChannels: channels };
+    }
+
+    // Duplicate code across channels — disambiguate by the schedule store name.
     const target = normalizeName(storeName);
     const targetSquished = squish(storeName);
     if (target) {
       // 1. Exact store-name match, separator-insensitive (most specific).
       const exact = list.find(s => squish(s.storeName) === targetSquished);
-      if (exact) return exact.channel;
+      if (exact) return { channel: exact.channel, matchType: 'exact', confident: true, candidateChannels: channels };
 
       // 2. Channel keyword present in the store name (e.g. "DIS-CHEM"/"DISCHEM",
       //    "BEX"). Separator-insensitive so "DISCHEM" matches "DIS-CHEM ...".
@@ -85,27 +115,37 @@ export function buildStoreChannelResolver(stores: StoreLike[]): StoreChannelReso
         const ch = squish(s.channel);
         return ch && targetSquished.includes(ch);
       });
-      if (byKeyword) return byKeyword.channel;
+      if (byKeyword) return { channel: byKeyword.channel, matchType: 'keyword', confident: true, candidateChannels: channels };
 
-      // 3. Best token overlap between control name and schedule name.
+      // 3. Best token overlap. Only confident when there is a STRICT single
+      //    winner — a tie (e.g. "BIX Norwood" matching both on "NORWOOD") is
+      //    treated as unresolved so it gets flagged for review.
       const targetTokens = new Set(target.split(' ').filter(Boolean));
       let best: StoreLike | null = null;
       let bestScore = 0;
+      let tie = false;
       for (const s of list) {
         const tokens = normalizeName(s.storeName).split(' ').filter(Boolean);
         let score = 0;
         for (const t of tokens) if (targetTokens.has(t)) score++;
-        if (score > bestScore) { bestScore = score; best = s; }
+        if (score > bestScore) { bestScore = score; best = s; tie = false; }
+        else if (score === bestScore && score > 0) { tie = true; }
       }
-      if (best && bestScore > 0) return best.channel;
+      if (best && bestScore > 0 && !tie) {
+        return { channel: best.channel, matchType: 'token', confident: true, candidateChannels: channels };
+      }
     }
 
-    // 4. Could not disambiguate — prefer an active entry, else the first.
-    const active = list.find(s => s.active !== false);
-    return (active ?? list[0]).channel;
+    // Could not disambiguate — guess (active, else first) but flag as ambiguous.
+    const guess = list.find(s => s.active !== false) ?? list[0];
+    return { channel: guess.channel, matchType: 'ambiguous', confident: false, candidateChannels: channels };
   }
 
-  return { resolve, isAmbiguous };
+  function resolve(storeCode: string, storeName: string): string {
+    return resolveDetailed(storeCode, storeName).channel;
+  }
+
+  return { resolve, resolveDetailed, isAmbiguous };
 }
 
 /** Convenience builder straight from control-file entries. */

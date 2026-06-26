@@ -47,11 +47,29 @@ export interface ReferenceData {
   teams: { teamName: string; leader: string }[];
 }
 
+export interface UnmatchedDuplicate {
+  storeCode: string;
+  storeName: string;
+  /** The channels this code exists under in the control file. */
+  candidateChannels: string[];
+  /** The channel we fell back to (best guess) — needs human verification. */
+  assignedChannel: string;
+}
+
 export interface UploadResult {
   rowsAdded: number;
   rowsUpdated: number;
   totalRows: number;
   warnings: string[];
+  /** Duplicate site codes whose channel could not be confidently matched by name. */
+  unmatchedDuplicates: UnmatchedDuplicate[];
+  /**
+   * True when the load was aborted (nothing saved) because error sites were
+   * found and "ignore error sites" was off. The user must fix the file & reload.
+   */
+  aborted?: boolean;
+  /** Count of error-site rows skipped because "ignore error sites" was on. */
+  skippedRows?: number;
 }
 
 // --- Control file types ---

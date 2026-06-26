@@ -2,7 +2,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { put, get } from '@vercel/blob';
-import { ScheduleRow, ParsedEntry, UploadResult } from './types';
+import { ScheduleRow, ParsedEntry, UploadResult, UnmatchedDuplicate } from './types';
 import { buildStoreChannelResolver } from './storeChannelResolver';
 
 /**
@@ -51,6 +51,7 @@ export async function mergeIntoSchedule(
   entries: ParsedEntry[],
   uploadedBy: string,
   referenceStores: { storeCode: string; storeName: string; channel: string }[],
+  options?: { ignoreErrorSites?: boolean },
 ): Promise<UploadResult> {
   const schedule = await loadSchedule(tenantSlug);
   const now = new Date().toISOString();
@@ -62,7 +63,46 @@ export async function mergeIntoSchedule(
   // disambiguated by store name so the right channel is recorded.
   const channelResolver = buildStoreChannelResolver(referenceStores);
 
+  // True for an entry whose duplicate code could NOT be confidently matched to
+  // a channel by name (e.g. a typo like "BIX Norwood" for "BEX Norwood").
+  const isErrorSite = (e: ParsedEntry) =>
+    !!e.storeId && channelResolver.resolveDetailed(e.storeId, e.storeName).matchType === 'ambiguous';
+
+  // Pre-pass: collect the unique list of error sites for reporting.
+  const unmatchedMap = new Map<string, UnmatchedDuplicate>();
   for (const entry of entries) {
+    if (!isErrorSite(entry)) continue;
+    const res = channelResolver.resolveDetailed(entry.storeId, entry.storeName);
+    const key = `${entry.storeId.toUpperCase()}|${entry.storeName.toLowerCase()}`;
+    if (!unmatchedMap.has(key)) {
+      unmatchedMap.set(key, {
+        storeCode: entry.storeId,
+        storeName: entry.storeName,
+        candidateChannels: res.candidateChannels,
+        assignedChannel: res.channel,
+      });
+    }
+  }
+  const unmatchedDuplicates = [...unmatchedMap.values()];
+
+  // Error sites present and we're NOT told to ignore them → abort the whole
+  // load (save nothing). The user must fix the file and reload.
+  if (unmatchedDuplicates.length > 0 && !options?.ignoreErrorSites) {
+    return {
+      rowsAdded: 0,
+      rowsUpdated: 0,
+      totalRows: schedule.length,
+      warnings: [...new Set(warnings)],
+      unmatchedDuplicates,
+      aborted: true,
+    };
+  }
+
+  let skippedRows = 0;
+  for (const entry of entries) {
+    // Ignoring error sites: skip them but keep loading everything else.
+    if (isErrorSite(entry)) { skippedRows++; continue; }
+
     const existingIdx = schedule.findIndex(r =>
       r.userEmail.toLowerCase() === entry.userEmail.toLowerCase() &&
       r.storeId.toUpperCase() === entry.storeId.toUpperCase() &&
@@ -74,8 +114,6 @@ export async function mergeIntoSchedule(
       warnings.push(`No site ID found for "${entry.storeName}" — added with blank site ID`);
     } else if (!channel) {
       warnings.push(`Store ${entry.storeId} (${entry.storeName}) not found in reference data`);
-    } else if (channelResolver.isAmbiguous(entry.storeId)) {
-      warnings.push(`Site code ${entry.storeId} exists in more than one channel — matched "${entry.storeName}" to channel "${channel}" by name. Please verify.`);
     }
 
     if (existingIdx >= 0) {
@@ -129,7 +167,14 @@ export async function mergeIntoSchedule(
   await saveSchedule(tenantSlug, schedule);
 
   const uniqueWarnings = [...new Set(warnings)];
-  return { rowsAdded, rowsUpdated, totalRows: schedule.length, warnings: uniqueWarnings };
+  return {
+    rowsAdded,
+    rowsUpdated,
+    totalRows: schedule.length,
+    warnings: uniqueWarnings,
+    unmatchedDuplicates,
+    skippedRows,
+  };
 }
 
 export async function updateScheduleRow(tenantSlug: string, index: number, row: ScheduleRow): Promise<ScheduleRow[]> {

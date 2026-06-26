@@ -11,6 +11,7 @@ export default function UploadPage() {
   const [file, setFile] = useState<File | null>(null);
   const [ccEmail, setCcEmail] = useState('');
   const [parseMode, setParseMode] = useState<ParseMode>('user-4wk');
+  const [ignoreErrorSites, setIgnoreErrorSites] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [result, setResult] = useState<{
     ok?: boolean;
@@ -21,6 +22,13 @@ export default function UploadPage() {
     rowsUpdated?: number;
     totalRows?: number;
     warnings?: string[];
+    unmatchedDuplicates?: {
+      storeCode: string;
+      storeName: string;
+      candidateChannels: string[];
+      assignedChannel: string;
+    }[];
+    skippedRows?: number;
   } | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const [dragOver, setDragOver] = useState(false);
@@ -37,6 +45,7 @@ export default function UploadPage() {
       formData.append('parseMode', parseMode);
       if (ccEmail) formData.append('ccEmail', ccEmail);
       if (forceIgnoreSheetNames) formData.append('ignoreSheetNames', '1');
+      if (ignoreErrorSites) formData.append('ignoreErrorSites', '1');
 
       const res = await fetch('/api/upload', { method: 'POST', body: formData });
       const data = await res.json();
@@ -172,6 +181,23 @@ export default function UploadPage() {
             />
           </div>
 
+          <label className="flex items-start gap-2.5 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={ignoreErrorSites}
+              onChange={e => setIgnoreErrorSites(e.target.checked)}
+              className="mt-0.5 accent-[var(--color-primary)]"
+            />
+            <span className="flex flex-col">
+              <span className="text-sm font-semibold text-gray-900">Ignore error sites</span>
+              <span className="text-xs text-gray-500">
+                When a duplicate site code can&apos;t be matched to a channel by its store name,
+                skip those rows and load the rest. <strong>Unticked</strong>, the whole load
+                fails so you can fix the file first. Either way the unmatched sites are listed below.
+              </span>
+            </span>
+          </label>
+
           <button
             onClick={() => handleUpload()}
             disabled={!file || uploading}
@@ -187,6 +213,9 @@ export default function UploadPage() {
                   <p className="font-semibold text-green-800">Upload successful!</p>
                   <p className="text-green-700">Format detected: <strong>{result.format}</strong></p>
                   <p className="text-green-700">Entries found: {result.entriesFound} | Added: {result.rowsAdded} | Updated: {result.rowsUpdated} | Total: {result.totalRows}</p>
+                  {!!result.skippedRows && (
+                    <p className="text-amber-700">Skipped {result.skippedRows} error-site row(s) — see the list below.</p>
+                  )}
                   {result.warnings && result.warnings.length > 0 && (
                     <div className="mt-2">
                       <p className="text-amber-700 font-medium">Warnings:</p>
@@ -219,6 +248,42 @@ export default function UploadPage() {
                   )}
                 </div>
               )}
+            </div>
+          )}
+
+          {/* Duplicate site codes that could not be matched to a channel */}
+          {result?.unmatchedDuplicates && result.unmatchedDuplicates.length > 0 && (
+            <div className="rounded-lg border border-red-300 bg-red-50 p-4">
+              <p className="text-sm font-bold text-red-800">
+                {result.unmatchedDuplicates.length} site{result.unmatchedDuplicates.length === 1 ? '' : 's'} with an unmatched duplicate site code
+              </p>
+              <p className="text-xs text-red-700 mt-1">
+                These codes exist in more than one channel and the store name didn&apos;t clearly
+                identify which one (often a typo, e.g. &quot;BIX&quot; instead of &quot;BEX&quot;).
+                {result.ok
+                  ? ' They were skipped. Fix the store names and reload to include them.'
+                  : ' Nothing was loaded — fix the store names and reload, or tick “Ignore error sites” to load the rest.'}
+              </p>
+              <div className="mt-3 overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="text-left text-red-800 border-b border-red-200">
+                      <th className="py-1 pr-4 font-semibold">Site Code</th>
+                      <th className="py-1 pr-4 font-semibold">Store Name (from file)</th>
+                      <th className="py-1 font-semibold">Possible Channels</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.unmatchedDuplicates.map((d, i) => (
+                      <tr key={i} className="border-b border-red-100 last:border-0 text-red-700">
+                        <td className="py-1 pr-4 font-mono">{d.storeCode}</td>
+                        <td className="py-1 pr-4">{d.storeName}</td>
+                        <td className="py-1">{d.candidateChannels.join(', ')}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           )}
         </section>

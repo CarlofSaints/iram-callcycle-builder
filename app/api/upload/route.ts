@@ -34,6 +34,7 @@ export async function POST(req: NextRequest) {
     }
 
     const ignoreSheetNames = formData.get('ignoreSheetNames') === '1';
+    const ignoreErrorSites = formData.get('ignoreErrorSites') === '1';
 
     const buffer = Buffer.from(await file.arrayBuffer());
     const references = await loadReferences(slug);
@@ -82,7 +83,20 @@ export async function POST(req: NextRequest) {
       entries,
       userEmail,
       references.stores.map(s => ({ storeCode: s.storeCode, storeName: s.storeName, channel: s.channel })),
+      { ignoreErrorSites },
     );
+
+    // Aborted: error sites found and the user hasn't opted to ignore them.
+    // Nothing was saved — tell them to fix the file and reload.
+    if (result.aborted) {
+      return NextResponse.json({
+        ok: false,
+        error: `${result.unmatchedDuplicates.length} site(s) have a duplicate site code that could not be matched to a channel. Fix the store name(s) in the file and reload, or tick "Ignore error sites" to load the rest.`,
+        format,
+        warnings: [...warnings, ...result.warnings],
+        unmatchedDuplicates: result.unmatchedDuplicates,
+      }, { status: 400 });
+    }
 
     // Log activity
     await addActivity(slug, {
