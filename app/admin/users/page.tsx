@@ -15,6 +15,7 @@ interface User {
   forcePasswordChange: boolean;
   firstLoginAt: string | null;
   createdAt: string;
+  notifyOnUpload?: boolean;
 }
 
 type ToastData = { message: string; type: 'success' | 'error' };
@@ -68,6 +69,7 @@ export default function AdminUsersPage() {
   const [editPw, setEditPw] = useState('');
   const [showEditPw, setShowEditPw] = useState(false);
   const [sendReset, setSendReset] = useState(false);
+  const [editNotifyOnUpload, setEditNotifyOnUpload] = useState(true);
   const [editLoading, setEditLoading] = useState(false);
 
   const notify = (message: string, type: 'success' | 'error' = 'success') =>
@@ -116,6 +118,7 @@ export default function AdminUsersPage() {
     setEditPw('');
     setShowEditPw(false);
     setSendReset(false);
+    setEditNotifyOnUpload(user.notifyOnUpload !== false);
   }
 
   async function handleEdit(e: React.FormEvent) {
@@ -123,7 +126,7 @@ export default function AdminUsersPage() {
     if (!editUser) return;
     setEditLoading(true);
     try {
-      const body: Record<string, unknown> = { name: editName, surname: editSurname, email: editEmail, role: editRole };
+      const body: Record<string, unknown> = { name: editName, surname: editSurname, email: editEmail, role: editRole, notifyOnUpload: editNotifyOnUpload };
       if (editPw) body.password = editPw;
 
       const res = await fetch(`/api/users/${editUser.id}`, {
@@ -334,6 +337,15 @@ export default function AdminUsersPage() {
                 </div>
               </div>
               <div className="flex flex-col gap-2">
+                {(editRole === 'admin' || editRole === 'super_admin') && (
+                  <label className="flex items-start gap-2 text-sm text-gray-700 cursor-pointer">
+                    <input type="checkbox" checked={editNotifyOnUpload} onChange={e => setEditNotifyOnUpload(e.target.checked)} className="mt-0.5 accent-[var(--color-primary)]" />
+                    <span>
+                      Email me when a call cycle is uploaded
+                      <span className="block text-xs text-gray-400">Untick to stop receiving the upload notification emails.</span>
+                    </span>
+                  </label>
+                )}
                 {editPw && (
                   <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
                     <input type="checkbox" checked={sendReset} onChange={e => setSendReset(e.target.checked)} className="accent-[var(--color-primary)]" />

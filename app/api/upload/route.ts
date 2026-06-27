@@ -57,7 +57,9 @@ export async function POST(req: NextRequest) {
 
     if (entries.length === 0) {
       // Send failure email
-      const adminEmails = (await loadUsers(slug)).filter(u => u.isAdmin || u.role === 'admin').map(u => u.email);
+      const adminEmails = (await loadUsers(slug))
+        .filter(u => (u.isAdmin || u.role === 'admin') && u.notifyOnUpload !== false)
+        .map(u => u.email);
       const notifyEmails = [...new Set([...adminEmails, userEmail, ...(ccEmail ? [ccEmail] : [])])].filter(Boolean);
       try {
         await sendUploadNotification(notifyEmails, {
@@ -113,7 +115,9 @@ export async function POST(req: NextRequest) {
     const uploadStatus: 'success' | 'partial' = allWarnings.length > 0 ? 'partial' : 'success';
 
     // Send email notification
-    const adminEmails = (await loadUsers(slug)).filter(u => u.isAdmin || u.role === 'admin').map(u => u.email);
+    const adminEmails = (await loadUsers(slug))
+      .filter(u => (u.isAdmin || u.role === 'admin') && u.notifyOnUpload !== false)
+      .map(u => u.email);
     const notifyEmails = [...new Set([...adminEmails, userEmail, ...(ccEmail ? [ccEmail] : [])])].filter(Boolean);
 
     try {

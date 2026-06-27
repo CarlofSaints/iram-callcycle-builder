@@ -25,6 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       users[idx].isAdmin = body.isAdmin;
       users[idx].role = body.isAdmin ? 'super_admin' : (users[idx].role === 'super_admin' ? 'rep' : users[idx].role);
     }
+    if (body.notifyOnUpload !== undefined) users[idx].notifyOnUpload = !!body.notifyOnUpload;
     if (body.password) {
       users[idx].password = await bcrypt.hash(body.password, 10);
       users[idx].forcePasswordChange = body.forcePasswordChange !== false;

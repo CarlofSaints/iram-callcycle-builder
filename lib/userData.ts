@@ -14,6 +14,11 @@ export interface User {
   forcePasswordChange: boolean;
   firstLoginAt: string | null;
   createdAt: string;
+  /**
+   * Whether this (admin) user receives the "call cycle uploaded" notification email.
+   * Undefined is treated as true for backward-compat — admins are emailed by default.
+   */
+  notifyOnUpload?: boolean;
 }
 
 /**
