@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getTenantSlug } from '@/lib/getTenantSlug';
 import { checkRole } from '@/lib/checkRole';
 import { loadConfig, saveConfig } from '@/lib/perigeeConfig';
-import { loadVisits, saveVisits, mapPerigeeVisit, extractRawVisits, visitDedupKey } from '@/lib/visitData';
+import { loadVisits, saveVisits, mapPerigeeVisit, visitDedupKey } from '@/lib/visitData';
+import { fetchAllPerigeeVisits, PerigeeFetchError } from '@/lib/perigeeFetch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -53,31 +54,27 @@ export async function POST(req: NextRequest) {
       perigeeBody.customers = [config.customer];
     }
 
-    // Call Perigee API
-    const perigeeRes = await fetch(config.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(perigeeBody),
-    });
-
-    if (!perigeeRes.ok) {
-      const errText = await perigeeRes.text().catch(() => '');
-      return NextResponse.json(
-        { error: `Perigee API returned ${perigeeRes.status}`, detail: errText.slice(0, 500) },
-        { status: 502, headers: NO_CACHE },
-      );
+    // Call Perigee API — walk EVERY page (the response is paginated; reading
+    // only page 1 silently dropped most visits for busy date ranges).
+    let rawVisits: Record<string, unknown>[];
+    let pageInfo, rawTopLevelKeys;
+    try {
+      const result = await fetchAllPerigeeVisits(config.endpoint, config.apiKey, perigeeBody);
+      rawVisits = result.rows;
+      pageInfo = result.pageInfo;
+      rawTopLevelKeys = result.rawTopLevelKeys;
+    } catch (e) {
+      if (e instanceof PerigeeFetchError) {
+        return NextResponse.json(
+          { error: `Perigee API returned ${e.status}`, detail: e.detail },
+          { status: 502, headers: NO_CACHE },
+        );
+      }
+      throw e;
     }
-
-    const perigeeData = await perigeeRes.json();
 
     // Update lastPolledAt
     await saveConfig(slug, { ...config, lastPolledAt: new Date().toISOString() });
-
-    // Extract visits array from flexible response shape
-    const rawVisits = extractRawVisits(perigeeData as Record<string, unknown>);
 
     if (mode === 'test') {
       const sample = rawVisits.slice(0, 3);
@@ -88,7 +85,8 @@ export async function POST(req: NextRequest) {
         totalRows: rawVisits.length,
         responseKeys,
         sample,
-        rawTopLevelKeys: Object.keys(perigeeData),
+        rawTopLevelKeys,
+        pageInfo,
         sentBody: perigeeBody,
       }, { headers: NO_CACHE });
     }
@@ -131,6 +129,7 @@ export async function POST(req: NextRequest) {
       totalRows: rawVisits.length,
       importedRows: newVisits.length,
       skippedDuplicates,
+      pageInfo,
     }, { headers: NO_CACHE });
   } catch (err) {
     console.error('Perigee poll error:', err);

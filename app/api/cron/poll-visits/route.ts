@@ -7,7 +7,8 @@ import {
   appendCronLog,
   type CronLogEntry, type PollSlot,
 } from '@/lib/perigeeConfig';
-import { loadVisits, saveVisits, mapPerigeeVisit, extractRawVisits, visitDedupKey, type Visit } from '@/lib/visitData';
+import { loadVisits, saveVisits, mapPerigeeVisit, visitDedupKey, type Visit } from '@/lib/visitData';
+import { fetchAllPerigeeVisits, PerigeeFetchError } from '@/lib/perigeeFetch';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -122,27 +123,22 @@ export async function GET(req: NextRequest) {
       perigeeBody.customers = [config.customer];
     }
 
-    // Call Perigee API
-    const perigeeRes = await fetch(config.endpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${config.apiKey}`,
-      },
-      body: JSON.stringify(perigeeBody),
-    });
-
-    if (!perigeeRes.ok) {
-      const errText = await perigeeRes.text().catch(() => '');
-      logEntry.error = `Perigee ${perigeeRes.status}: ${errText.slice(0, 200)}`;
-      await appendCronLog(slug, logEntry);
-      return NextResponse.json({ ok: false, error: logEntry.error }, { status: 502 });
+    // Call Perigee API — walk every page (paginated response).
+    let rawVisits: Record<string, unknown>[];
+    let pageInfo;
+    try {
+      const result = await fetchAllPerigeeVisits(config.endpoint, config.apiKey, perigeeBody);
+      rawVisits = result.rows;
+      pageInfo = result.pageInfo;
+    } catch (e) {
+      if (e instanceof PerigeeFetchError) {
+        logEntry.error = `Perigee ${e.status}: ${e.detail.slice(0, 200)}`;
+        await appendCronLog(slug, logEntry);
+        return NextResponse.json({ ok: false, error: logEntry.error }, { status: 502 });
+      }
+      throw e;
     }
-
-    const perigeeData = await perigeeRes.json();
     await saveConfig(slug, { ...config, lastPolledAt: new Date().toISOString() });
-
-    const rawVisits = extractRawVisits(perigeeData as Record<string, unknown>);
 
     if (rawVisits.length === 0) {
       logEntry.result = 'No visits returned';
@@ -191,6 +187,7 @@ export async function GET(req: NextRequest) {
       action: 'imported',
       imported: newVisits.length,
       skipped,
+      pageInfo,
     });
   } catch (err) {
     logEntry.error = err instanceof Error ? err.message : 'Unknown error';
