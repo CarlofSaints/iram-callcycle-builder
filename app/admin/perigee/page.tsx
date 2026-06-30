@@ -486,6 +486,23 @@ export default function PerigeeAdminPage() {
 
             {pollResult && (
               <div className="bg-gray-50 rounded-lg p-4 overflow-x-auto">
+                {Boolean(pollResult.ok) && (pollResult.mode === 'import' || pollResult.importedRows != null) && (
+                  <div className="mb-2 text-sm text-gray-800 flex flex-wrap gap-x-4 gap-y-1">
+                    <span><strong>{Number(pollResult.importedRows) || 0}</strong> imported</span>
+                    <span><strong>{Number(pollResult.skippedDuplicates) || 0}</strong> skipped (already had)</span>
+                    <span><strong>{Number(pollResult.totalRows) || 0}</strong> fetched from Perigee</span>
+                    {(() => {
+                      const pi = pollResult.pageInfo as { pagesFetched?: number; reportedTotal?: number | null; stoppedReason?: string } | undefined;
+                      if (!pi) return null;
+                      return (
+                        <>
+                          {pi.pagesFetched != null && <span><strong>{pi.pagesFetched}</strong> page{pi.pagesFetched === 1 ? '' : 's'}</span>}
+                          {pi.reportedTotal != null && <span>Perigee reported <strong>{pi.reportedTotal}</strong> total</span>}
+                        </>
+                      );
+                    })()}
+                  </div>
+                )}
                 <pre className="text-xs text-gray-700 whitespace-pre-wrap">
                   {JSON.stringify(pollResult, null, 2)}
                 </pre>
