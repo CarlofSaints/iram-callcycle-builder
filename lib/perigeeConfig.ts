@@ -2,6 +2,7 @@ import fs from 'fs/promises';
 import fsSync from 'fs';
 import path from 'path';
 import { put, get } from '@vercel/blob';
+import type { ExcludedRep } from './excludedReps';
 
 // ─── Types ───────────────────────────────────────────────────────────
 
@@ -59,6 +60,7 @@ export const DEFAULT_SCHEDULE: PollSchedule = {
 function configBlobKey(slug: string) { return `${slug}/config/perigee-api.json`; }
 function scheduleBlobKey(slug: string) { return `${slug}/config/perigee-schedule.json`; }
 function cronLogBlobKey(slug: string) { return `${slug}/logs/cron-poll.json`; }
+function excludedRepsBlobKey(slug: string) { return `${slug}/config/excluded-reps.json`; }
 
 function localFile(slug: string, name: string) { return path.join(process.cwd(), 'data', `${slug}-${name}.json`); }
 
@@ -105,6 +107,14 @@ async function writeJson<T>(tenantSlug: string, blobKeyFn: (s: string) => string
 }
 
 // ─── Config CRUD ────────────────────────────────────────────────────
+
+export async function loadExcludedReps(tenantSlug: string): Promise<ExcludedRep[]> {
+  return readJson<ExcludedRep[]>(tenantSlug, excludedRepsBlobKey, 'excluded-reps', []);
+}
+
+export async function saveExcludedReps(tenantSlug: string, list: ExcludedRep[]): Promise<void> {
+  await writeJson(tenantSlug, excludedRepsBlobKey, 'excluded-reps', list);
+}
 
 export async function loadConfig(tenantSlug: string): Promise<PerigeeConfig> {
   return readJson(tenantSlug, configBlobKey, 'perigee-config', DEFAULT_CONFIG);

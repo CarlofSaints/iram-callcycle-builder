@@ -4,6 +4,8 @@ import { checkRole } from '@/lib/checkRole';
 import { loadConfig, saveConfig } from '@/lib/perigeeConfig';
 import { loadVisits, saveVisits, mapPerigeeVisit, visitDedupKey } from '@/lib/visitData';
 import { fetchAllPerigeeVisits, PerigeeFetchError } from '@/lib/perigeeFetch';
+import { loadExcludedReps } from '@/lib/perigeeConfig';
+import { excludedEmailSet, excludedNameSet, filterExcludedVisits } from '@/lib/excludedReps';
 
 export const dynamic = 'force-dynamic';
 export const runtime = 'nodejs';
@@ -99,9 +101,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const mappedVisits = rawVisits
-      .map(mapPerigeeVisit)
-      .filter(v => v.storeCode || v.repName);
+    const exList = await loadExcludedReps(slug);
+    const mappedVisits = filterExcludedVisits(
+      rawVisits.map(mapPerigeeVisit).filter(v => v.storeCode || v.repName),
+      excludedEmailSet(exList), excludedNameSet(exList),
+    );
 
     // Deduplicate against existing visits
     const existing = await loadVisits(slug);

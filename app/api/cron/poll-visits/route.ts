@@ -5,9 +5,11 @@ import {
   loadConfig, saveConfig,
   loadScheduleConfig,
   appendCronLog,
+  loadExcludedReps,
   type CronLogEntry, type PollSlot,
 } from '@/lib/perigeeConfig';
 import { loadVisits, saveVisits, mapPerigeeVisit, visitDedupKey, type Visit } from '@/lib/visitData';
+import { excludedEmailSet, excludedNameSet, filterExcludedVisits } from '@/lib/excludedReps';
 import { fetchAllPerigeeVisits, PerigeeFetchError } from '@/lib/perigeeFetch';
 
 export const dynamic = 'force-dynamic';
@@ -147,8 +149,12 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ ok: true, action: 'polled', imported: 0 });
     }
 
-    // Map and deduplicate
-    const mappedVisits: Visit[] = rawVisits.map(mapPerigeeVisit).filter(v => v.storeCode || v.repName);
+    // Map, drop excluded reps (test BAs), and deduplicate
+    const exList = await loadExcludedReps(slug);
+    const mappedVisits: Visit[] = filterExcludedVisits(
+      rawVisits.map(mapPerigeeVisit).filter(v => v.storeCode || v.repName),
+      excludedEmailSet(exList), excludedNameSet(exList),
+    );
 
     // Deduplicate within batch
     const batchSeen = new Set<string>();
